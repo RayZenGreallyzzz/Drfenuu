@@ -1,0 +1,3 @@
+"use strict";
+(()=>{let p,closed=false,timer;function connect(){if(closed)return;try{p=browser.runtime.connectNative("devsuite_tab");}catch(e){timer=setTimeout(connect,3000);return;}const port=p;port.onDisconnect.addListener(()=>{if(!closed)timer=setTimeout(connect,3000);});port.onMessage.addListener(async m=>{if(!["eruda","xterm"].includes(m?.type))return;try{const r=await browser.runtime.sendMessage({type:m.type});port.postMessage({type:"result",message:r?.message||"Нет ответа"});}catch(e){try{port.postMessage({type:"result",message:String(e)});}catch(_) {}}});}
+window.addEventListener("pagehide",()=>{closed=true;clearTimeout(timer);try{p?.disconnect();}catch(e){}});window.addEventListener("pageshow",e=>{if(e.persisted){closed=false;connect();}});connect();})();

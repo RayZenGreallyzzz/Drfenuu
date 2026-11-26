@@ -1,0 +1,1 @@
+(()=>{if(window.__aetherEruda){window.__aetherEruda.destroy();delete window.__aetherEruda;return;}if(!window.eruda?.init)throw Error("Eruda не загружена");window.eruda.init();window.eruda.show();window.__aetherEruda=window.eruda;})();

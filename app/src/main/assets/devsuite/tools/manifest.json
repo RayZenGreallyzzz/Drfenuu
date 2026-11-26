@@ -1,0 +1,11 @@
+{
+  "manifest_version": 2,
+  "name": "AetherBolt Local Tools",
+  "version": "0.1.0",
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "devsuite-tools@aetherbolt.local"
+    }
+  },
+  "content_security_policy": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'; worker-src 'self' blob:"
+}

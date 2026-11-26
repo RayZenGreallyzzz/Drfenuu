@@ -3,3 +3,13 @@
 local.properties
 .idea/
 *.iml
+
+/app/src/main/assets/devsuite/bridge/vendor/
+/app/src/main/assets/devsuite/tools/cyberchef/
+/app/src/main/assets/devsuite/tools/licenses/
+/app/src/main/assets/devsuite/tools/v86/*.bin
+/app/src/main/assets/devsuite/tools/v86/*.wasm
+/app/src/main/assets/devsuite/tools/v86/*.iso
+/app/src/main/assets/devsuite/tools/v86/libv86.js
+/app/src/main/assets/devsuite/tools/v86/xterm.js
+/app/src/main/assets/devsuite/tools/v86/xterm.css

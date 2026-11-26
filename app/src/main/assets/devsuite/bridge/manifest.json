@@ -1,0 +1,38 @@
+{
+  "manifest_version": 2,
+  "name": "AetherBolt DevSuite Bridge",
+  "version": "0.1.0",
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "devsuite@aetherbolt.local",
+      "strict_min_version": "128.0"
+    }
+  },
+  "permissions": [
+    "nativeMessaging",
+    "nativeMessagingFromContent",
+    "geckoViewAddons",
+    "scripting",
+    "proxy",
+    "http://*/*",
+    "https://*/*"
+  ],
+  "background": {
+    "scripts": [
+      "background.js"
+    ]
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "http://*/*",
+        "https://*/*"
+      ],
+      "js": [
+        "session.js"
+      ],
+      "run_at": "document_idle",
+      "all_frames": false
+    }
+  ]
+}
