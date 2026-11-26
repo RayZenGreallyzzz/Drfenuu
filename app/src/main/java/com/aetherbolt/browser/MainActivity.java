@@ -26,7 +26,7 @@ public class MainActivity extends Activity {
     private final Set<Tab> capturing=Collections.newSetFromMap(new IdentityHashMap<>());
     private FrameLayout shell,overlay; private String panelTitle="";
     private static final class PanelState {final String title;final FrameLayout view;PanelState(String t,FrameLayout v){title=t;view=v;}}
-    private final ArrayDeque<PanelState> panelHistory=new ArrayDeque<>(); private Tab shownTab; private static final int SCRIPT_PICK=702; private final ArrayList<UserScript> scripts=new ArrayList<>(); private static class UserScript {String id,name,site,code;boolean enabled; UserScript(String i,String n,String o,String c,boolean e){id=i;name=n;site=o;code=c;enabled=e;}} private TextView tabCount; private ProgressBar progress; private android.content.SharedPreferences prefs;
+    private final ArrayDeque<PanelState> panelHistory=new ArrayDeque<>(); private Tab shownTab; private static final int SCRIPT_PICK=702; private final ArrayList<UserScript> scripts=new ArrayList<>(); private static class UserScript {String id,name,site,code;boolean enabled; UserScript(String i,String n,String o,String c,boolean e){id=i;name=n;site=o;code=c;enabled=e;}} private TextView tabCount; private TextView downloadButton; private ProgressBar progress; private android.content.SharedPreferences prefs;
     private BoltVpn vpn; private static GeckoRuntime runtime; private WebExtensionController extensions; private WebExtension scriptBridge; private final ArrayList<Tab> tabs=new ArrayList<>(); private int active=0;
     private static class Tab { WebExtension extensionOwner; Tab opener; GeckoView web; GeckoSession session; String url="", pendingUrl=""; boolean canBack,canForward; boolean home=true; String title="Новая вкладка"; int progress=0; final HashSet<String> executed=new HashSet<>(); android.graphics.Bitmap preview, favicon; }
     private final ArrayList<String> bookmarks=new ArrayList<>(), history=new ArrayList<>();
@@ -61,9 +61,9 @@ public class MainActivity extends Activity {
         progress=new ProgressBar(this,null,android.R.attr.progressBarStyleHorizontal);progress.setMax(100);progress.setProgressTintList(android.content.res.ColorStateList.valueOf(CYAN));root.addView(progress,new LinearLayout.LayoutParams(-1,dp(3)));progress.setVisibility(View.INVISIBLE);
         body=new FrameLayout(this);root.addView(body,new LinearLayout.LayoutParams(-1,0,1));
         LinearLayout bottom=row();bottom.setPadding(dp(4),0,dp(4),dp(4));
-        String[] icons={"‹","+","▣","🧩","☰"}, desc={"Назад","Новая вкладка","Вкладки","Расширения","Меню"};
-        Runnable[] actions={()->back(),()->addTab(),()->tabDialog(),()->quickAddons(),()->menu()};
-        for(int i=0;i<icons.length;i++){TextView b=button(icons[i],desc[i],actions[i]);LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(0,dp(48),1);p.setMargins(dp(3),dp(3),dp(3),dp(3));bottom.addView(b,p);if(i==2)tabCount=b;}root.addView(bottom);setContentView(shell);
+        String[] icons={"‹","+","▣","🧩","↓","☰"}, desc={"Назад","Новая вкладка","Вкладки","Расширения","Загрузки","Меню"};
+        Runnable[] actions={()->back(),()->addTab(),()->tabDialog(),()->quickAddons(),()->downloadPanel(),()->menu()};
+        for(int i=0;i<icons.length;i++){TextView b=button(icons[i],desc[i],actions[i]);LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(0,dp(48),1);p.setMargins(dp(3),dp(3),dp(3),dp(3));bottom.addView(b,p);if(i==2)tabCount=b;if(i==4)downloadButton=b;}root.addView(bottom);setContentView(shell);transfers.setChanged(this::refreshDownloadBadge);
     }
     private Tab current(){return tabs.get(active);}
     private Tab createTab(){
@@ -195,13 +195,48 @@ public class MainActivity extends Activity {
     private void themes(){LinearLayout c=panel("Внешний вид","Фирменные варианты оформления",false);for(String theme:new String[]{"Космос","AMOLED","Графит"})item(c,"✧",theme,theme.equals("Космос")?"Планета и неоновые линии":theme.equals("AMOLED")?"Чёрный фон стартовой страницы":"Спокойный тёмный фон",appearance.equals(theme)?"●":"○",()->{appearance=theme;prefs.edit().putString("appearance",theme).apply();root.setBackgroundColor(themeBg());showTab();});}
     private void requestDownload(String url,String ua,String disposition,String mime){notice("Загрузка","Старый механизм загрузки не используется.");}
 
+    private void refreshDownloadBadge(){
+        if(isDestroyed()||downloadButton==null)return;
+        int n=transfers.activeCount();downloadButton.setText(n>0?String.valueOf(n):"");downloadButton.setCompoundDrawablePadding(dp(3));downloadButton.setCompoundDrawables(n>0?icon("↓",CYAN,19):null,n==0?icon("↓",TEXT,23):null,null,null);downloadButton.setContentDescription(n>0?"Загрузки: "+n+" в процессе":"Загрузки");
+    }
     private void downloadPanel(){
-        LinearLayout c=panel("Загрузки","Файлы на устройстве • AetherBolt",false);
-        section(c,"ЗАГРУЗКИ");
-        for(FileTransfers.Entry e:transfers.entries())item(c,"↓",e.name,android.text.format.Formatter.formatFileSize(this,e.bytes)+" • "+(e.file==null?"Папка Download":"Файлы браузера"),"›",()->downloadEntry(e));
-        if(transfers.entries().isEmpty())item(c,"↓","Пока нет файлов","Скачанные файлы появятся здесь","",()->{});
-        item(c,"↻","Обновить","","›",()->downloadPanel());
-        item(c,"▤","Открыть системные загрузки","Файлы Android","›",()->{try{startActivity(new Intent(android.app.DownloadManager.ACTION_VIEW_DOWNLOADS));}catch(Exception e){toast("Откройте приложение Файлы → Download");}});
+        LinearLayout c=panel("Загрузки","AetherBolt • Все скачанные файлы",false);
+        EditText search=field("Поиск файлов по названию");add(c,search,-1,48);
+        section(c,"ТЕКУЩИЕ ЗАГРУЗКИ");
+        LinearLayout activeJobs=column();c.addView(activeJobs);
+        section(c,"СКАЧАННЫЕ ФАЙЛЫ");
+        LinearLayout completed=column();c.addView(completed);
+        Runnable files=()->renderDownloaded(completed,search.getText().toString());
+        search.addTextChangedListener(new android.text.TextWatcher(){public void beforeTextChanged(CharSequence x,int a,int n,int f){}public void onTextChanged(CharSequence x,int a,int b,int n){files.run();}public void afterTextChanged(android.text.Editable x){}});
+        item(c,"↻","Обновить список","","›",files);
+        item(c,"▤","Открыть системную папку","Download / AetherBolt","›",()->{try{startActivity(new Intent(android.app.DownloadManager.ACTION_VIEW_DOWNLOADS));}catch(Exception e){toast("Откройте приложение Файлы → Download");}});
+        files.run();
+        final long[] generation={-1};
+        Runnable tick=new Runnable(){public void run(){
+            if(isDestroyed()||!c.isAttachedToWindow())return;
+            renderDownloadJobs(activeJobs);
+            long revision=transfers.revision();if(generation[0]!=revision){generation[0]=revision;files.run();}
+            c.postDelayed(this,750);
+        }};
+        c.post(tick);c.addOnAttachStateChangeListener(new View.OnAttachStateChangeListener(){public void onViewAttachedToWindow(View v){c.removeCallbacks(tick);c.post(tick);}public void onViewDetachedFromWindow(View v){c.removeCallbacks(tick);}});
+    }
+    private void renderDownloadJobs(LinearLayout c){
+        c.removeAllViews();List<FileTransfers.Job> jobs=transfers.jobs();
+        if(jobs.isEmpty()){add(c,label("Нет активных загрузок",13,MUTED),-1,40);return;}
+        for(FileTransfers.Job j:jobs){
+            LinearLayout card=column();card.setPadding(dp(12),dp(8),dp(12),dp(8));card.setBackground(glass(15,0xff343c64));
+            TextView title=label(j.name,15,TEXT);title.setMaxLines(2);card.addView(title);
+            long bytes=j.bytes,total=j.total;String amount=android.text.format.Formatter.formatFileSize(this,bytes);String status=j.status;
+            boolean busy=j.busy();int percent=total>0?(int)Math.min(100,100.0*bytes/total):0;
+            add(card,label(busy?status+" • "+amount+(total>0?" / "+android.text.format.Formatter.formatFileSize(this,total)+" • "+percent+"%":""):status,12,busy?CYAN:MUTED),-1,-2);
+            if(busy){ProgressBar bar=new ProgressBar(this,null,android.R.attr.progressBarStyleHorizontal);bar.setIndeterminate(total<=0);bar.setMax(100);if(total>0)bar.setProgress(percent);bar.setProgressTintList(android.content.res.ColorStateList.valueOf(CYAN));add(card,bar,-1,8);add(card,button("Отменить","Отменить скачивание",()->transfers.cancel(j)),-1,44);}else add(card,button("Убрать","Убрать сообщение",()->{transfers.dismiss(j);renderDownloadJobs(c);}),-1,44);
+            add(c,card,-1,-2);
+        }
+    }
+    private void renderDownloaded(LinearLayout c,String query){
+        c.removeAllViews();String q=query.trim().toLowerCase(Locale.ROOT);int count=0;
+        for(FileTransfers.Entry e:transfers.entries()){if(!e.name.toLowerCase(Locale.ROOT).contains(q))continue;count++;String date=e.date>0?new java.text.SimpleDateFormat("dd.MM.yyyy HH:mm",Locale.getDefault()).format(new Date(e.date)):"";item(c,"↓",e.name,android.text.format.Formatter.formatFileSize(this,e.bytes)+(date.isEmpty()?"":" • "+date),"›",()->downloadEntry(e));}
+        if(count==0)add(c,label(q.isEmpty()?"Скачанные файлы появятся здесь":"Файлы не найдены",14,MUTED),-1,48);
     }
     private void downloadEntry(FileTransfers.Entry e){
         LinearLayout c=panel(e.name,"Управление файлом",true);

@@ -26,6 +26,29 @@ final class FileTransfers {
     private GeckoResult<GeckoSession.PromptDelegate.PromptResponse> uploadResult;
     private Entry exportEntry;
     private boolean pickerOpen;
+    private final Map<String,Job> downloads=new java.util.concurrent.ConcurrentHashMap<>();
+    private final java.util.concurrent.atomic.AtomicLong revision=new java.util.concurrent.atomic.AtomicLong();
+    private Runnable changed;
+    void setChanged(Runnable callback){changed=callback;}
+    long revision(){return revision.get();}
+    private void notifyChanged(){revision.incrementAndGet();ui.runOnUiThread(()->{if(!ui.isDestroyed()&&changed!=null)changed.run();});}
+    static final class Job {
+        final String id=UUID.randomUUID().toString(),name;final long total,started=System.currentTimeMillis();final WebResponse response;
+        volatile long bytes;volatile boolean cancelled,done;volatile String status="Скачивание";
+        Job(String name,long total,WebResponse response){this.name=name;this.total=total;this.response=response;}
+        boolean busy(){return !done;}
+    }
+    List<Job> jobs(){ArrayList<Job> list=new ArrayList<>(downloads.values());list.sort(Comparator.comparingLong((Job j)->j.started).reversed());return list;}
+    int activeCount(){int n=0;for(Job j:downloads.values())if(j.busy())n++;return n;}
+    void cancel(Job j){if(j.done)return;j.cancelled=true;j.status="Отмена…";new Thread(()->close(j.response),"aether-download-cancel").start();}
+    void dismiss(Job j){if(j.done){downloads.remove(j.id,j);notifyChanged();}}
+    private long responseLength(WebResponse r){try{return Math.max(-1,Long.parseLong(r.headers.get("content-length")));}catch(Exception ex){return -1;}}
+    private static long copyJob(InputStream in,OutputStream out,Job job)throws IOException{
+        byte[] buf=new byte[65536];long total=0;int n;
+        while(!job.cancelled&&(n=in.read(buf))!=-1){if(job.cancelled)break;out.write(buf,0,n);total+=n;job.bytes=total;}
+        if(job.cancelled)throw new java.io.InterruptedIOException("Загрузка отменена");
+        out.flush();return total;
+    }
     FileTransfers(Activity a){ui=a;prefs=a.getSharedPreferences("aetherbolt",Activity.MODE_PRIVATE);}
     private void toast(String s){ui.runOnUiThread(()->{if(!ui.isDestroyed())Toast.makeText(ui,s,Toast.LENGTH_LONG).show();});}
     GeckoSession.PromptDelegate promptDelegate(){
@@ -80,8 +103,9 @@ final class FileTransfers {
     }
     private static int port(Uri u){return u.getPort()!=-1?u.getPort():"https".equals(u.getScheme())?443:"http".equals(u.getScheme())?80:-1;}
     static final class Entry{
-        final String name,mime;final long bytes;final Uri publicUri;final File file;
-        Entry(String n,String m,long b,Uri u,File f){name=n;mime=m;bytes=b;publicUri=u;file=f;}
+        final String name,mime;final long bytes,date;final Uri publicUri;final File file;
+        Entry(String n,String m,long b,Uri u,File f){this(n,m,b,u,f,f==null?System.currentTimeMillis():f.lastModified());}
+        Entry(String n,String m,long b,Uri u,File f,long d){name=n;mime=m;bytes=b;publicUri=u;file=f;date=d;}
     }
     Uri uri(Entry e){return e.publicUri!=null?e.publicUri:FileProvider.getUriForFile(ui,ui.getPackageName()+".updates",e.file);}
     private static String mime(String type,String name){
@@ -97,44 +121,44 @@ final class FileTransfers {
         if(ui.isDestroyed()||ui.isFinishing()){close(response);return;}
         String name=filename(URLUtil.guessFileName(response.uri,response.headers.get("content-disposition"),response.headers.get("content-type")));
         String type=mime(response.headers.get("content-type"),name);
-        Runnable save=()->{toast("Скачивание: "+name);new Thread(()->save(response,name,type),"aether-download").start();};
+        Runnable save=()->{Job job=new Job(name,responseLength(response),response);downloads.put(job.id,job);notifyChanged();toast("Скачивание: "+name);new Thread(()->save(response,name,type,job),"aether-download").start();};
         if(response.skipConfirmation){save.run();return;}
         new AlertDialog.Builder(ui).setTitle("Скачать файл?").setMessage(name).setPositiveButton("Скачать",(d,w)->save.run()).setNegativeButton("Отмена",(d,w)->close(response)).setOnCancelListener(d->close(response)).show();
     }
-    private void save(WebResponse response,String name,String type){
+    private void save(WebResponse response,String name,String type,Job job){
         Uri dest=null;File part=null;boolean finished=false;
         try(InputStream in=response.body){
             if(Build.VERSION.SDK_INT>=29){
                 ContentValues values=new ContentValues();values.put(MediaStore.MediaColumns.DISPLAY_NAME,name);values.put(MediaStore.MediaColumns.MIME_TYPE,type);values.put(MediaStore.MediaColumns.RELATIVE_PATH,Environment.DIRECTORY_DOWNLOADS+"/AetherBolt");values.put(MediaStore.MediaColumns.IS_PENDING,1);
                 dest=ui.getContentResolver().insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI,values);
                 if(dest==null)throw new IOException("Не удалось создать файл Download");
-                long bytes;try(OutputStream out=ui.getContentResolver().openOutputStream(dest,"w")){if(out==null)throw new IOException("Нет потока записи");bytes=copy(in,out);}
-                ContentValues ready=new ContentValues();ready.put(MediaStore.MediaColumns.IS_PENDING,0);if(ui.getContentResolver().update(dest,ready,null,null)<1)throw new IOException("Не удалось завершить запись");
+                long bytes;try(OutputStream out=ui.getContentResolver().openOutputStream(dest,"w")){if(out==null)throw new IOException("Нет потока записи");bytes=copyJob(in,out,job);}
+                if(job.cancelled)throw new java.io.InterruptedIOException("Отменено");job.status="Сохранение";ContentValues ready=new ContentValues();ready.put(MediaStore.MediaColumns.IS_PENDING,0);if(ui.getContentResolver().update(dest,ready,null,null)<1)throw new IOException("Не удалось завершить запись");
                 String savedName=name;try(android.database.Cursor c=ui.getContentResolver().query(dest,new String[]{MediaStore.MediaColumns.DISPLAY_NAME},null,null,null)){if(c!=null&&c.moveToFirst())savedName=c.getString(0);}catch(Exception ignored){}
                 record(new Entry(savedName,type,bytes,dest,null));finished=true;toast("Сохранено в Download/AetherBolt: "+savedName);
             }else{
                 File folder=dir();part=File.createTempFile(".download-", ".part",folder);long bytes;
-                try(OutputStream out=new FileOutputStream(part)){bytes=copy(in,out);}
-                File target=new File(folder,System.currentTimeMillis()+"-"+name);if(!part.renameTo(target))throw new IOException("Не удалось завершить файл");
+                try(OutputStream out=new FileOutputStream(part)){bytes=copyJob(in,out,job);}
+                if(job.cancelled)throw new java.io.InterruptedIOException("Отменено");job.status="Сохранение";File target=new File(folder,System.currentTimeMillis()+"-"+name);if(!part.renameTo(target))throw new IOException("Не удалось завершить файл");
                 finished=true;toast("Сохранено в Загрузках браузера: "+target.getName());
             }
-        }catch(Exception e){toast("Ошибка скачивания: "+e.getMessage());}finally{if(!finished&&dest!=null)try{ui.getContentResolver().delete(dest,null,null);}catch(Exception ignored){}if(part!=null&&part.exists())part.delete();}
+        }catch(Exception e){job.status=job.cancelled?"Отменено":"Ошибка: "+String.valueOf(e.getMessage());toast(job.status);}finally{if(!finished&&dest!=null)try{ui.getContentResolver().delete(dest,null,null);}catch(Exception ignored){}if(part!=null&&part.exists())part.delete();job.done=true;if(finished)downloads.remove(job.id,job);notifyChanged();}
     }
     private synchronized void record(Entry e)throws JSONException{
-        JSONArray old=records();JSONObject item=new JSONObject().put("uri",e.publicUri.toString()).put("name",e.name).put("mime",e.mime).put("bytes",e.bytes);
+        JSONArray old=records();JSONObject item=new JSONObject().put("uri",e.publicUri.toString()).put("name",e.name).put("mime",e.mime).put("bytes",e.bytes).put("date",e.date);
         JSONArray next=new JSONArray().put(item);for(int i=0;i<Math.min(old.length(),999);i++)next.put(old.get(i));prefs.edit().putString(RECORDS,next.toString()).apply();
     }
     private JSONArray records(){try{return new JSONArray(prefs.getString(RECORDS,"[]"));}catch(JSONException ex){return new JSONArray();}}
     List<Entry> entries(){
         ArrayList<Entry> list=new ArrayList<>();JSONArray a=records();
-        for(int n=0;n<a.length();n++){JSONObject o=a.optJSONObject(n);if(o==null)continue;Uri u=Uri.parse(o.optString("uri"));if(!"content".equals(u.getScheme())||!"media".equals(u.getAuthority()))continue;list.add(new Entry(o.optString("name"),o.optString("mime","application/octet-stream"),o.optLong("bytes"),u,null));}
+        for(int n=0;n<a.length();n++){JSONObject o=a.optJSONObject(n);if(o==null)continue;Uri u=Uri.parse(o.optString("uri"));if(!"content".equals(u.getScheme())||!"media".equals(u.getAuthority()))continue;list.add(new Entry(o.optString("name"),o.optString("mime","application/octet-stream"),o.optLong("bytes"),u,null,o.optLong("date",0)));}
         try{File[] old=dir().listFiles();if(old!=null){Arrays.sort(old,Comparator.comparingLong(File::lastModified).reversed());for(File f:old)if(f.isFile()&&!f.getName().endsWith(".part"))list.add(new Entry(f.getName(),mime(null,f.getName()),f.length(),null,f));}}catch(IOException ignored){}
-        return list;
+        list.sort(Comparator.comparingLong((Entry e)->e.date).reversed());return list;
     }
     void open(Entry e){try{Uri u=uri(e);Intent i=new Intent(Intent.ACTION_VIEW).setDataAndType(u,e.mime).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);ui.startActivity(Intent.createChooser(i,"Открыть файл"));}catch(Exception ex){toast("Не удалось открыть файл: "+ex.getMessage());}}
     void share(Entry e){try{Uri u=uri(e);Intent i=new Intent(Intent.ACTION_SEND).setType(e.mime).putExtra(Intent.EXTRA_STREAM,u).setClipData(ClipData.newRawUri(e.name,u)).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);ui.startActivity(Intent.createChooser(i,"Поделиться файлом"));}catch(Exception ex){toast("Не удалось поделиться: "+ex.getMessage());}}
     void export(Entry e){if(exportEntry!=null)return;exportEntry=e;try{ui.startActivityForResult(new Intent(Intent.ACTION_CREATE_DOCUMENT).setType(e.mime).addCategory(Intent.CATEGORY_OPENABLE).putExtra(Intent.EXTRA_TITLE,e.name),EXPORT);}catch(Exception ex){exportEntry=null;toast("Не удалось открыть выбор папки");}}
     synchronized boolean delete(Entry e){try{
-        if(e.file!=null)return e.file.delete();ui.getContentResolver().delete(e.publicUri,null,null);JSONArray a=records(),next=new JSONArray();for(int i=0;i<a.length();i++){JSONObject o=a.optJSONObject(i);if(o!=null&&!e.publicUri.toString().equals(o.optString("uri")))next.put(o);}prefs.edit().putString(RECORDS,next.toString()).apply();return true;
+        if(e.file!=null){boolean ok=e.file.delete();if(ok)notifyChanged();return ok;}ui.getContentResolver().delete(e.publicUri,null,null);JSONArray a=records(),next=new JSONArray();for(int i=0;i<a.length();i++){JSONObject o=a.optJSONObject(i);if(o!=null&&!e.publicUri.toString().equals(o.optString("uri")))next.put(o);}prefs.edit().putString(RECORDS,next.toString()).apply();notifyChanged();return true;
     }catch(Exception ex){return false;}}
 }

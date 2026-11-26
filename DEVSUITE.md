@@ -11,3 +11,6 @@
 
 ## 0.7.7
 Native AetherBolt DevSuite and proxy panels. Gecko file prompt connects to Android Storage Access Framework for single and multiple files; folder and direct camera capture not yet implemented. Download streams use MediaStore Download/AetherBolt on Android 10+, app Downloads on Android 8/9 with export/share. Same-origin blob navigation allowed. Successful compile does not replace on-device upload/download testing.
+
+### Browser download center
+Dedicated bottom navigation button, active transfers with byte/percentage progress (when Content-Length is available), cancellation, errors, searchable persistent completed-file list including older app downloads, sorting by date, and open/share/export/delete actions. Downloads survive ordinary tab switching; Android process termination may interrupt active transfers. No resume or background service yet.
