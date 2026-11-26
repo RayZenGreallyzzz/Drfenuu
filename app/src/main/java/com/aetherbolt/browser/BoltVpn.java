@@ -1,5 +1,7 @@
 package com.aetherbolt.browser;
 import android.content.Context;
+import android.net.Uri;
+import java.util.*;
 import com.wireguard.android.backend.GoBackend;
 import com.wireguard.android.backend.Tunnel;
 import com.wireguard.config.Config;
@@ -28,6 +30,19 @@ final class BoltVpn {
     boolean active(){return state==Tunnel.State.UP;}
     boolean busy(){return busy;}
     private File file(){return new File(context.getNoBackupFilesDir(),"aether-vpn.conf");}
+    private File folder(){return new File(context.getNoBackupFilesDir(),"vpn-profiles");}
+    private final android.content.SharedPreferences selection(){return context.getSharedPreferences("vpn-selection",Context.MODE_PRIVATE);}
+    private volatile String selected="";
+    private volatile List<String> names=Collections.emptyList();
+    List<String> profiles(){return new ArrayList<>(names);}
+    String selected(){return selected;}
+    private void refresh(){String[] a=folder().list((d,n)->n.matches("[A-Za-z0-9._ -]{1,100}\\.conf"));if(a==null)a=new String[0];Arrays.sort(a,String.CASE_INSENSITIVE_ORDER);names=Collections.unmodifiableList(Arrays.asList(a));}
+    private void store(File file,String raw)throws Exception{android.util.AtomicFile af=new android.util.AtomicFile(file);FileOutputStream out=af.startWrite();try{out.write(raw.getBytes(StandardCharsets.UTF_8));af.finishWrite(out);}catch(Exception e){af.failWrite(out);throw e;}}
+    private void selectInternal(String name)throws Exception{if(!names.contains(name))throw new IOException("Профиль не найден");Config next=parse(read(new FileInputStream(new File(folder(),name))));config=next;selected=name;selection().edit().putString("selected",name).apply();}
+    private String displayName(Uri uri){String name="";try(android.database.Cursor c=context.getContentResolver().query(uri,new String[]{android.provider.OpenableColumns.DISPLAY_NAME},null,null,null)){if(c!=null&&c.moveToFirst())name=c.getString(0);}catch(Exception ignored){}return name==null?"":name;}
+    private String profileName(String raw,String name){String safe=name.replaceAll("(?i)\\.txt$","").replaceAll("(?i)\\.conf$","").replaceAll("[^A-Za-z0-9._ -]","_").trim();if(safe.isEmpty()||safe.equals(".")||safe.equals(".."))safe="WireGuard";if(safe.length()>70)safe=safe.substring(0,70);return safe+".conf";}
+    void importMany(List<Uri> uris,Done done){if(busy||active()){done.finish("Сначала отключи VPN");return;}if(uris.isEmpty()||uris.size()>100){done.finish("Выбери от 1 до 100 файлов");return;}busy=true;worker.execute(()->{int added=0,duplicates=0,failed=0;try{if(!folder().isDirectory()&&!folder().mkdirs())throw new IOException("Нет папки профилей");refresh();for(Uri uri:uris){try{String raw=read(context.getContentResolver().openInputStream(uri));parse(raw);String name=profileName(raw,displayName(uri));File dst=new File(folder(),name);int i=2;boolean duplicate=false;while(dst.exists()){if(raw.equals(read(new FileInputStream(dst)))){duplicate=true;break;}dst=new File(folder(),name.substring(0,name.length()-5)+" ("+(i++)+").conf");}if(duplicate){duplicates++;continue;}if(names.size()+added>=500)throw new IOException("Лимит профилей");store(dst,raw);added++;}catch(Exception ex){failed++;}}refresh();if(!ready()&&!names.isEmpty())selectInternal(names.get(0));}catch(Exception e){failed++;}finally{busy=false;}done.finish("Добавлено: "+added+" • Повторы: "+duplicates+" • Ошибки: "+failed);});}
+    void select(String name,Done done){if(busy||active()){done.finish("Отключи VPN перед выбором сервера");return;}busy=true;worker.execute(()->{String err=null;try{selectInternal(name);}catch(Exception e){err="Не удалось выбрать профиль";}finally{busy=false;}done.finish(err);});}
     private Config parse(String raw)throws Exception{
         if(raw.length()>65536)throw new IOException("Конфигурация слишком большая");
         StringBuilder clean=new StringBuilder();boolean found=false;
@@ -46,9 +61,8 @@ final class BoltVpn {
         if(!v4||!v6)throw new IOException("Нужен полный туннель: AllowedIPs = 0.0.0.0/0, ::/0");
         return c;
     }
-    void restore(Done done){if(ready()||!file().isFile()){done.finish(null);return;}worker.execute(()->{try{config=parse(read(new FileInputStream(file())));done.finish(null);}catch(Exception e){done.finish("Сохранённый профиль не читается");}});}
+    void restore(Done done){if(busy||ready()){done.finish(null);return;}busy=true;worker.execute(()->{String err=null;try{if(!folder().isDirectory()&&!folder().mkdirs())throw new IOException("Нет папки");if(file().isFile()){String raw=read(new FileInputStream(file()));parse(raw);File dst=new File(folder(),"Imported-legacy.conf");if(!dst.exists())store(dst,raw);if(raw.equals(read(new FileInputStream(dst))))file().delete();}refresh();String saved=selection().getString("selected","");if(names.contains(saved))selectInternal(saved);else if(!names.isEmpty())selectInternal(names.get(0));}catch(Exception e){err="Не удалось восстановить профили";}finally{busy=false;}done.finish(err);});}
     private String read(InputStream input)throws IOException{if(input==null)throw new IOException("Нет файла");try(InputStream in=input;ByteArrayOutputStream out=new ByteArrayOutputStream()){byte[] b=new byte[4096];int n;while((n=in.read(b))!=-1){if(out.size()+n>65536)throw new IOException("Лимит 64 КБ");out.write(b,0,n);}return new String(out.toByteArray(),StandardCharsets.UTF_8);}}
-    void importProfile(InputStream in,Done done){if(busy||active()){try{if(in!=null)in.close();}catch(IOException ignored){}done.finish("Сначала отключи VPN");return;}busy=true;worker.execute(()->{String error=null;try{String raw=read(in);Config parsed=parse(raw);android.util.AtomicFile af=new android.util.AtomicFile(file());FileOutputStream out=af.startWrite();try{out.write(raw.getBytes(StandardCharsets.UTF_8));af.finishWrite(out);}catch(Exception e){af.failWrite(out);throw e;}config=parsed;}catch(Exception e){error=e instanceof IOException?e.getMessage():"Некорректная конфигурация WireGuard";}finally{busy=false;}done.finish(error);});}
     void change(boolean up,Done done){if(busy){done.finish("Подключение уже обрабатывается");return;}if(up&&!ready()){done.finish("Импортируй профиль .conf");return;}busy=true;worker.execute(()->{String error=null;try{if(backend==null)backend=new GoBackend(context);state=backend.setState(tunnel,up?Tunnel.State.UP:Tunnel.State.DOWN,up?config:null);}catch(Exception|LinkageError e){error="Не удалось изменить состояние WireGuard. Проверь профиль и системное разрешение VPN.";}finally{busy=false;}done.finish(error);});}
-    void forget(Done done){if(busy||active()){done.finish("Сначала отключи VPN");return;}worker.execute(()->{if(file().exists()&&!file().delete()){done.finish("Не удалось удалить профиль");return;}config=null;done.finish(null);});}
+    void forget(Done done){if(busy||active()){done.finish("Сначала отключи VPN");return;}busy=true;worker.execute(()->{String err=null;try{if(!selected.isEmpty()&&names.contains(selected)){File f=new File(folder(),selected);if(f.exists()&&!f.delete())throw new IOException("Не удалось удалить");}config=null;selected="";selection().edit().remove("selected").apply();refresh();if(!names.isEmpty())selectInternal(names.get(0));}catch(Exception e){err="Не удалось удалить профиль";}finally{busy=false;}done.finish(err);});}
 }

@@ -27,7 +27,15 @@ jobs:
           gradle-version: '9.5.0'
       - run: bash tests/run.sh
       - run: python3 -m unittest discover -s tools -p test_delta.py -v
-      - run: gradle :app:assembleDebug --stacktrace
+      - name: Build debug APK (retry transient dependency failures)
+        shell: bash
+        run: |
+          for attempt in 1 2 3; do
+            if gradle :app:assembleDebug --stacktrace > build-attempt.log 2>&1; then cat build-attempt.log; exit 0; fi
+            cat build-attempt.log
+            if ! grep -Eq '429|502|503|504|Connection reset|Read timed out' build-attempt.log || [ "$attempt" = 3 ]; then exit 1; fi
+            sleep $((attempt * 25))
+          done
       - uses: actions/upload-artifact@v4
         with:
           name: AetherBolt-gecko-alpha-debug
