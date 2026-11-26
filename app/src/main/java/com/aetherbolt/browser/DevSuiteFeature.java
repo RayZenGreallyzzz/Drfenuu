@@ -18,7 +18,7 @@ final class DevSuiteFeature {
     private final Map<GeckoSession,WebExtension.Port> ports=new IdentityHashMap<>();
     private WebExtension bridge,tools;
     private WebExtension.Port control;
-    private boolean running;
+    private boolean running,loadingTools;
     DevSuiteFeature(Activity ui,GeckoRuntime runtime,Supplier<GeckoSession> current,BiConsumer<WebExtension,String> open){this.ui=ui;this.runtime=runtime;this.current=current;this.open=open;}
     private void message(String msg){if(running&&!ui.isDestroyed())Toast.makeText(ui,msg,Toast.LENGTH_LONG).show();}
     private final WebExtension.PortDelegate receiver=new WebExtension.PortDelegate(){
@@ -30,7 +30,7 @@ final class DevSuiteFeature {
         c.ensureBuiltIn("resource://android/assets/devsuite/bridge/",BRIDGE_ID).then(e->{ui.runOnUiThread(()->{if(!running)return;bridge=e;
             e.setMessageDelegate(new WebExtension.MessageDelegate(){@Override public void onConnect(WebExtension.Port p){if(!running||p.sender.session!=null){p.disconnect();return;}WebExtension.Port old=control;control=p;p.setDelegate(receiver);if(old!=null&&old!=p)old.disconnect();}},"devsuite_control");
             for(GeckoSession s:sessions)bind(s);});return null;},err->{ui.runOnUiThread(()->message("DevSuite: "+err));return null;});
-        c.ensureBuiltIn("resource://android/assets/devsuite/tools/",TOOLS_ID).then(e->{ui.runOnUiThread(()->{if(running)tools=e;});return null;},err->{ui.runOnUiThread(()->message("Локальные инструменты: "+err));return null;});
+
     }
     void attach(GeckoSession s){sessions.add(s);if(bridge!=null)bind(s);}
     private void bind(GeckoSession s){s.getWebExtensionController().setMessageDelegate(bridge,new WebExtension.MessageDelegate(){
@@ -39,6 +39,11 @@ final class DevSuiteFeature {
     void detach(GeckoSession s){sessions.remove(s);if(bridge!=null)s.getWebExtensionController().setMessageDelegate(bridge,null,"devsuite_tab");WebExtension.Port p=ports.remove(s);if(p!=null)p.disconnect();}
     void stop(){running=false;for(GeckoSession s:new ArrayList<>(sessions))detach(s);if(bridge!=null)bridge.setMessageDelegate(null,"devsuite_control");WebExtension.Port p=control;control=null;if(p!=null)p.disconnect();}
     void send(String type){WebExtension.Port p=ports.get(current.get());if(p==null){message("Откройте HTTP(S)-страницу и при необходимости обновите её.");return;}try{p.postMessage(new JSONObject().put("type",type));}catch(Exception e){message("DevSuite: "+e);}}
-    void openTool(String page){open.accept(tools,page);}
+    void openTool(String page){
+        if(tools!=null){open.accept(tools,page);return;}
+        if(loadingTools){message("Локальные инструменты загружаются");return;}
+        loadingTools=true;message("Подготовка локального инструмента");
+        runtime.getWebExtensionController().ensureBuiltIn("resource://android/assets/devsuite/tools/",TOOLS_ID).then(e->{ui.runOnUiThread(()->{loadingTools=false;if(running&&!ui.isDestroyed()){tools=e;open.accept(e,page);}});return null;},err->{ui.runOnUiThread(()->{loadingTools=false;message("Локальные инструменты: "+err);});return null;});
+    }
     void sendProxy(String type,String host,int port){if(control==null){message("Канал прокси недоступен");return;}try{control.postMessage(new JSONObject().put("type","proxy").put("proxy",new JSONObject().put("type",type).put("host",host).put("port",port)));}catch(Exception e){message("Прокси: "+e);}}
 }

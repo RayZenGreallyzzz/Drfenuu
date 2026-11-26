@@ -23,3 +23,6 @@ Gecko ContentDelegate handles HTML Fullscreen API requests for the selected tab.
 
 ## 0.7.9 — Local Media Center
 LibVLC 3.7.5 private fullscreen activity for user-selected local files and downloads. Lazy native initialization on playback only; seek, pause, audio and subtitle tracks, external player fallback. Gecko still handles web video, DRM and authenticated web streams. The list of extensions is a routing hint, not a guarantee that every file decodes. Before public release, review LibVLC and bundled codec licensing and source-distribution obligations. No background playback or DRM bypass. Device testing required.
+
+### Startup performance
+Restored inactive tabs and new blank tabs are metadata-only; GeckoView and GeckoSession are created on first navigation or activation of a restored web tab. Opened sessions remain intact; no automatic discard of forms or browsing history. New windows requested by Gecko/extension keep their existing session creation path. Local tool extension installation is requested only on first use; already installed extensions remain subject to Gecko startup behavior. No forced preferences or weakening tracking protection. Device benchmarks still required.
