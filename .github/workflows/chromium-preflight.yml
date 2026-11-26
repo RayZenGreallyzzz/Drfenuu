@@ -1,0 +1,20 @@
+name: Chromium Edition preflight
+on:
+  push:
+    branches: [chromium-edition]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - name: Validate build scripts and branding
+        run: |
+          bash -n chromium/build.sh
+          python3 -m unittest discover -s chromium/tests -v
+          python3 -m json.tool chromium/smoke-extension/manifest.json
+          node --check chromium/smoke-extension/content.js
+          grep -Fx 'is_desktop_android = true' chromium/args.gn
+          grep -Fx 'chrome_public_manifest_package = "com.aetherbolt.chromium"' chromium/args.gn
