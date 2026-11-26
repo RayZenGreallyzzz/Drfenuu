@@ -1,0 +1,2 @@
+# WireGuard client (experimental)
+Requires user-supplied standard WireGuard .conf with one peer, DNS, interface address, endpoint, full IPv4 and IPv6 routes. Import restricts applications to this package; no server or credentials supplied. Profile stored in Android private no-backup storage. Tunnel status reports backend UP, not handshake or validated egress. No tested kill switch; connection may revert to direct on tunnel shutdown or revocation. Verify DNS, IPv4/IPv6, WebRTC, Gecko child processes and downloads on a real device. Do not claim anonymity.
