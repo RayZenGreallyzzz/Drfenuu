@@ -3,3 +3,5 @@ Requires user-supplied standard WireGuard .conf with one peer, DNS, interface ad
 
 ## Provider integration
 Proton's supported third-party flow is account.protonvpn.com/downloads and WireGuard profile import. The old public logicals API was discontinued, per support correspondence published on Proton UserVoice in April 2025. No supported third-party API for automatic server configuration/authorization has been verified. Do not request account credentials or use public relay proxies. Official provider links open externally. Local country groups are inferred from filename patterns, not verified server geolocation. Favorites are local. OpenVPN is not implemented. See https://protonvpn.com/support/wireguard-configurations and https://protonvpn.com/vpn-servers.
+
+Provider links now open in an AetherBolt tab. Downloaded .conf and .conf.txt files may be explicitly imported from the internal downloads panel; not all provider download mechanisms are verified on device.
