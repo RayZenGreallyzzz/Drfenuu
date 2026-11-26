@@ -32,10 +32,12 @@ jobs:
         shell: bash
         run: |
           for attempt in 1 2 3; do
+            if [ "$attempt" = 2 ]; then export AETHER_MAVEN_REPO=https://repo1.maven.org/maven2/; fi
+            if [ "$attempt" = 3 ]; then export AETHER_MAVEN_REPO=https://maven-central.storage-download.googleapis.com/maven2/; fi
             if gradle :app:assembleDebug -PaetherAbi=arm64-v8a --stacktrace > build-attempt.log 2>&1; then cat build-attempt.log; exit 0; fi
             cat build-attempt.log
             if ! grep -Eq '429|502|503|504|Connection reset|Read timed out' build-attempt.log || [ "$attempt" = 3 ]; then exit 1; fi
-            sleep $((attempt * 25))
+            sleep $((attempt * 8))
           done
       - uses: actions/upload-artifact@v4
         if: env.SIGNING_READY != 'true' || github.ref != 'refs/heads/gecko-edition'

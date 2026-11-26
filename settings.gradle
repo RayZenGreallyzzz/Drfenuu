@@ -1,4 +1,4 @@
-pluginManagement { repositories { google(); mavenCentral(); gradlePluginPortal() } }
-dependencyResolutionManagement { repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS); repositories { google(); mavenCentral(); maven { url 'https://maven.mozilla.org/maven2/' } } }
+pluginManagement { repositories { google(); maven { url = System.getenv('AETHER_MAVEN_REPO') ?: 'https://repo.maven.apache.org/maven2/' }; gradlePluginPortal() } }
+dependencyResolutionManagement { repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS); repositories { google(); maven { url = System.getenv('AETHER_MAVEN_REPO') ?: 'https://repo.maven.apache.org/maven2/' }; maven { url 'https://maven.mozilla.org/maven2/' } } }
 rootProject.name = 'AetherBolt Browser'
 include ':app'

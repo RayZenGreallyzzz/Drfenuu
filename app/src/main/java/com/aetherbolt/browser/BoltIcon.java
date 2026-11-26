@@ -6,12 +6,13 @@ import android.graphics.drawable.Drawable;
 final class BoltIcon extends Drawable {
     private final String key; private final int color; private final Paint p=new Paint(3);
     BoltIcon(String key,int color){this.key=key;this.color=color;}
-    static boolean supports(String k){return "⌂|‹|›|↻|☆|▣|☰|×|+|＋|⌕|⚙|◷|↓|✧|◈|◎|☾|▤|◉|▧|▶|⚡|✓|↗|ⓘ".contains("|"+k+"|")||k.equals("⌂")||k.equals("ⓘ");}
+    static boolean supports(String k){return "⌂|‹|›|↻|☆|▣|☰|×|+|＋|⌕|⚙|◷|↓|✧|◈|◎|☾|▤|◉|▧|▶|⚡|✓|↗|ⓘ|🧩".contains("|"+k+"|")||k.equals("⌂")||k.equals("ⓘ");}
     private void line(Canvas c,float... coords){Path a=new Path();a.moveTo(coords[0],coords[1]);for(int i=2;i<coords.length;i+=2)a.lineTo(coords[i],coords[i+1]);c.drawPath(a,p);}
     private void round(Canvas c,float l,float t,float r,float b,float rad){c.drawRoundRect(l,t,r,b,rad,rad,p);}
     @Override public void draw(Canvas c){Rect b=getBounds();float scale=Math.min(b.width(),b.height())/24f;c.save();c.translate(b.left+(b.width()-24*scale)/2,b.top+(b.height()-24*scale)/2);c.scale(scale,scale);
       p.setColor(color);p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(1.65f);p.setStrokeCap(Paint.Cap.ROUND);p.setStrokeJoin(Paint.Join.ROUND);
       switch(key){
+       case "🧩": {Path a=new Path();a.moveTo(4,5);a.lineTo(9,5);a.cubicTo(7,0,17,0,15,5);a.lineTo(20,5);a.lineTo(20,10);a.cubicTo(25,8,25,18,20,16);a.lineTo(20,21);a.lineTo(14,21);a.cubicTo(16,16,6,16,8,21);a.lineTo(4,21);a.lineTo(4,15);a.cubicTo(9,17,9,7,4,9);a.close();c.drawPath(a,p);break;}
        case "⌂": line(c,3,11,12,3,21,11);line(c,5,10,5,21,10,21,10,15,14,15,14,21,19,21,19,10);break;
        case "‹": line(c,15,5,8,12,15,19);break;
        case "›": line(c,9,5,16,12,9,19);break;
