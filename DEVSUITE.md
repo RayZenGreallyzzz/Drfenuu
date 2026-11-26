@@ -26,3 +26,6 @@ LibVLC 3.7.5 private fullscreen activity for user-selected local files and downl
 
 ### Startup performance
 Restored inactive tabs and new blank tabs are metadata-only; GeckoView and GeckoSession are created on first navigation or activation of a restored web tab. Opened sessions remain intact; no automatic discard of forms or browsing history. New windows requested by Gecko/extension keep their existing session creation path. Local tool extension installation is requested only on first use; already installed extensions remain subject to Gecko startup behavior. No forced preferences or weakening tracking protection. Device benchmarks still required.
+
+### Inline video previews
+Explicit Gecko permission policy allows inaudible autoplay and denies audible autoplay. Other content permissions retain GeckoView's delegate defaults. No injected preload, forced video quality, eager fetching, or weakened tracking protection. Actual buffering and first-frame timing depend on the site, network and device; existing site permissions may affect testing.
