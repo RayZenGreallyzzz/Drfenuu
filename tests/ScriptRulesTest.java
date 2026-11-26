@@ -18,7 +18,12 @@ public class ScriptRulesTest{
  t(!ScriptRules.validate("// @grant GM_xmlhttpRequest\n").isEmpty());
  t(!ScriptRules.validate("// @require https://example.org/x.js\n").isEmpty());
  t(!ScriptRules.validate("// @run-at document-start\n").isEmpty());
- t(!ScriptRules.validate("// @match https://example.org/*\n").isEmpty());
+ t(ScriptRules.validate("// @match https://example.org/*\n").isEmpty());
+ t(ScriptRules.permits("// @match https://example.org/*","https://example.org/a"));
+ t(!ScriptRules.permits("// @match https://example.org/*","https://example.com/a"));
+ t(!ScriptRules.permits("// @match https://example.org/*\n// @exclude https://example.org/private*","https://example.org/private/a"));
+ t(ScriptRules.permits("// @match *://*.example.org/*","https://a.example.org/x"));
+ t(!ScriptRules.permits("// @match *://*.example.org/*","https://badexample.org/x"));
  t(ScriptRules.metadata("// @name Demo\n","name").equals("Demo"));
  System.out.println("PASS: "+n+" script rules checks");
  }
