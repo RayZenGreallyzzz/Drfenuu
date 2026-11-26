@@ -19,7 +19,7 @@ jobs:
           echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
           "$SDK/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$SDK" --list --channel=3 > /tmp/sdk-packages.txt
           grep -E "platforms;android-(37|CinnamonBun)|build-tools;37" /tmp/sdk-packages.txt || true
-          "$SDK/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$SDK" --channel=3 "platforms;android-37.0" "build-tools;36.0.0"
+          "$SDK/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$SDK" --channel=3 "platforms;android-37.2" "build-tools;36.0.0"
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '9.5.0'
