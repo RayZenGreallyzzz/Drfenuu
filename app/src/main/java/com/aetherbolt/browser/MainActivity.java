@@ -176,7 +176,7 @@ public class MainActivity extends Activity {
     private void attachScriptBridge(Tab tab){if(scriptBridge==null)return;tab.session.getWebExtensionController().setMessageDelegate(scriptBridge,new WebExtension.MessageDelegate(){
         @Override public GeckoResult<Object> onMessage(String nativeApp,Object message,WebExtension.MessageSender sender){
             JSONObject reply=new JSONObject();try{JSONArray list=new JSONArray();reply.put("scripts",list);
-                if(!sender.isTopLevel||sender.session!=tab.session||!tabs.contains(tab)||!(message instanceof JSONObject))return GeckoResult.fromValue(reply);
+                if(!sender.isTopLevel()||sender.session!=tab.session||!tabs.contains(tab)||!(message instanceof JSONObject))return GeckoResult.fromValue(reply);
                 JSONObject req=(JSONObject)message;String url=sender.url,site=ScriptRules.origin(url==null?"":url);if(site.isEmpty())return GeckoResult.fromValue(reply);
                 String action=req.optString("action");for(UserScript u:scripts){if(!u.enabled||!u.site.equals(site)||!ScriptRules.permits(u.code,url))continue;
                     if("list".equals(action)){JSONObject item=new JSONObject();item.put("id",u.id);item.put("name",u.name);list.put(item);}
