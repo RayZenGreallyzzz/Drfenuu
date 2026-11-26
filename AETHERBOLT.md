@@ -1,7 +1,3 @@
-# AetherBolt Browser 0.1 Alpha
+# AetherBolt Browser 0.3 Alpha
 
-Experimental Android browser based on Android WebView. Includes 12 search engines, customizable search, tabs, bookmarks, history and basic ad-host filtering. Tor, extensions, full Chromium, private profiles and built-in downloads are NOT implemented. Do not rely on this version for anonymity.
-
-Android 8.0+ (API 26). Build with JDK 17, Android SDK 35 and Gradle 8.9.
-
-Run the Build Android alpha workflow in Actions, then download the AetherBolt-alpha-debug artifact and extract the APK.
+Android WebView browser. Custom cosmic interface, tabs, 12 search engines, bookmarks, history, download manager, appearance options, site settings, and built-in ad/tracker filters, experimental dark-page CSS and reader text extraction. Not Chrome/Firefox extensions. Tor, .onion connectivity, isolated private profiles and full Chromium remain unimplemented. Not suitable for anonymity. Debug builds are for testing only.
