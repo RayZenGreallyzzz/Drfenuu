@@ -1,0 +1,36 @@
+{
+  "manifest_version": 2,
+  "name": "AetherBolt Script Bridge",
+  "version": "0.1.0",
+  "description": "Local user scripts with explicit per-site permission.",
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "scripts@aetherbolt.local"
+    }
+  },
+  "permissions": [
+    "nativeMessaging",
+    "nativeMessagingFromContent",
+    "geckoViewAddons",
+    "https://*/*",
+    "http://*/*"
+  ],
+  "background": {
+    "scripts": [
+      "background.js"
+    ]
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://*/*",
+        "http://*/*"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "run_at": "document_idle",
+      "all_frames": false
+    }
+  ]
+}
