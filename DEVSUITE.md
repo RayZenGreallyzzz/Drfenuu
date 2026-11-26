@@ -20,3 +20,6 @@ Gecko owns touch dispatch; native code observes gesture boundaries without inter
 
 ## 0.7.8 — Web fullscreen
 Gecko ContentDelegate handles HTML Fullscreen API requests for the selected tab. Hides tab strip, address bar, progress, bottom controls and Android system bars; screen stays awake while fullscreen. Android back exits fullscreen without navigating away. Restores chrome on exit, navigation, closing or switching the fullscreen tab. Rotation respects the device setting; no video cropping or forced landscape. Sites must expose a working fullscreen request. Test on device with HTML5 video, embedded video and WebGL game fullscreen.
+
+## 0.7.9 — Local Media Center
+LibVLC 3.7.5 private fullscreen activity for user-selected local files and downloads. Lazy native initialization on playback only; seek, pause, audio and subtitle tracks, external player fallback. Gecko still handles web video, DRM and authenticated web streams. The list of extensions is a routing hint, not a guarantee that every file decodes. Before public release, review LibVLC and bundled codec licensing and source-distribution obligations. No background playback or DRM bypass. Device testing required.

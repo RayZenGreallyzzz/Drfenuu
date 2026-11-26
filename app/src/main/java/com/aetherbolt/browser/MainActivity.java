@@ -158,7 +158,7 @@ public class MainActivity extends Activity {
         String[] names={"Google","DuckDuckGo","Bing","Brave Search","Qwant","Яндекс","Ahmia","Добавить"};String[] icons={"G","D","b","B","Q","Я","◎","+"};int[] colors={0xff79aaff,0xffff9c50,CYAN,0xffff855d,PURPLE,0xffff7d8a,0xffc69cff,TEXT};Runnable[] actions=new Runnable[8];for(int i=0;i<6;i++){final int n=i;actions[i]=()->setEngine(Router.ENGINES[n][0],Router.ENGINES[n][1]);}actions[6]=()->setEngine(Router.ENGINES[10][0],Router.ENGINES[10][1]);actions[7]=()->customEngine();
         int cols=getResources().getConfiguration().screenWidthDp>=720?8:4;grid(box,names,icons,colors,actions,cols);
         grid(box,new String[]{"Дополнения","Загрузки","Закладки","История","Настройки","Вкладки"},new String[]{"✧","↓","☆","◷","⚙","▣"},new int[]{PURPLE,CYAN},new Runnable[]{()->quickAddons(),()->downloadPanel(),()->listDialog("Закладки",bookmarks,"bookmarks"),()->listDialog("История",history,"history"),()->settings(),()->tabDialog()},getResources().getConfiguration().screenWidthDp>=650?6:3);
-        TextView note=label("GECKO ALPHA 0.7.8   •   Tor пока недоступен",11,MUTED);note.setGravity(Gravity.CENTER);add(box,note,-1,28);return sc;
+        TextView note=label("GECKO ALPHA 0.7.9   •   Tor пока недоступен",11,MUTED);note.setGravity(Gravity.CENTER);add(box,note,-1,28);return sc;
     }
 
     private android.graphics.drawable.Drawable ripple(int color,int radius,int stroke){return new android.graphics.drawable.RippleDrawable(android.content.res.ColorStateList.valueOf(0x337f8cff),shape(color,radius,stroke),null);}
@@ -278,6 +278,7 @@ public class MainActivity extends Activity {
         EditText search=field("Поиск файлов по названию");add(c,search,-1,48);
         section(c,"ТЕКУЩИЕ ЗАГРУЗКИ");
         LinearLayout activeJobs=column();c.addView(activeJobs);
+        item(c,"▶","Медиацентр","Видео и аудио с устройства","›",()->startActivity(new Intent(this,MediaCenterActivity.class)));
         section(c,"СКАЧАННЫЕ ФАЙЛЫ");
         LinearLayout completed=column();c.addView(completed);
         Runnable files=()->renderDownloaded(completed,search.getText().toString());
@@ -314,6 +315,7 @@ public class MainActivity extends Activity {
     }
     private void downloadEntry(FileTransfers.Entry e){
         LinearLayout c=panel(e.name,"Управление файлом",true);
+        if(MediaCenterActivity.isMedia(e.name,e.mime))item(c,"▶","Воспроизвести в AetherBolt","Встроенный проигрыватель • весь экран","›",()->transfers.play(e));
         item(c,"↗","Открыть","Выбрать приложение","›",()->transfers.open(e));
         item(c,"↗","Поделиться","Отправить файл","›",()->transfers.share(e));
         item(c,"↓","Сохранить копию","Выбрать папку и имя","›",()->transfers.export(e));
@@ -329,6 +331,8 @@ public class MainActivity extends Activity {
         section(c,"ЛОКАЛЬНЫЕ ИНСТРУМЕНТЫ");
         item(c,"▤","CyberChef","Кодирование • преобразование данных","›",()->devSuite.openTool("cyberchef/CyberChef_v11.6.0.html"));
         item(c,"▣","Linux v86","Виртуальная машина • ISO • терминал","›",()->devSuite.openTool("v86/index.html"));
+        section(c,"МУЛЬТИМЕДИА");
+        item(c,"▶","Медиацентр","Локальное видео и аудио","›",()->startActivity(new Intent(this,MediaCenterActivity.class)));
         section(c,"СЕТЬ И ФАЙЛЫ");
         item(c,"◈","Прокси SOCKS5 / HTTPS","Настройки соединения GeckoView","›",()->proxyPanel());
         item(c,"↓","Загрузки","Открыть, поделиться, сохранить копию","›",()->downloadPanel());
@@ -532,7 +536,7 @@ public class MainActivity extends Activity {
     }
     @Override protected void onPause(){if(!tabs.isEmpty())saveTabs();super.onPause();}
     private void menu(){
-        LinearLayout c=panel("AetherBolt","0.7.8 DevSuite • Быстрый доступ",true);
+        LinearLayout c=panel("AetherBolt","0.7.9 DevSuite • Быстрый доступ",true);
         grid(c,new String[]{"Новая вкладка","Вкладки","Вперёд","Закладка","История","Загрузки","Расширения","DevSuite","VPN","Защита","Настройки","Закладки"},new String[]{"+","▣","›","☆","◷","↓","✧",">_","◈","◈","⚙","☆"},new int[]{CYAN,PURPLE},new Runnable[]{()->addTab(),()->tabDialog(),()->{dismissPanel();if(!current().home&&current().canForward)current().session.goForward();},()->saveBookmark(),()->listDialog("История",history,"history"),()->downloadPanel(),()->quickAddons(),()->devSuitePanel(),()->vpnPanel(),()->privacy(),()->settings(),()->listDialog("Закладки",bookmarks,"bookmarks")},3);
     }
 
@@ -549,7 +553,7 @@ public class MainActivity extends Activity {
     private void startVpn(){vpn.change(true,this::vpnDone);}
     private void vpnDone(String err){runOnUiThread(()->{if(isFinishing()||isDestroyed())return;if(err!=null)notice("VPN",err);else vpnPanel();});}
 
-    private void settings(){LinearLayout c=panel("Настройки","Управление AetherBolt Browser",false);section(c,"ПЕРСОНАЛИЗАЦИЯ");item(c,"⌕","Поисковая система",engineName,"›",()->engineDialog());item(c,"◎","Язык результатов",searchLanguageName()+" • "+SearchLanguage.support(engineTemplate),"›",()->searchLanguages());item(c,"✧","Внешний вид",appearance,"›",()->themes());item(c,"▣","Настройки сайтов","JavaScript, изображения, ПК, масштаб, медиа","›",()->webOptions());section(c,"БЕЗОПАСНОСТЬ И МОДУЛИ");item(c,">_","DevSuite","Eruda • xterm • CyberChef • Linux • прокси","›",()->devSuitePanel());item(c,"◈","VPN • WireGuard",vpn.active()?"Туннель включён":"Отключён","›",()->vpnPanel());item(c,"◈","Конфиденциальность","Cookies, история, реклама и трекеры","›",()->privacy());item(c,"✧","Расширения и скрипты","GeckoView • XPI / JS","›",()->addonManage());item(c,"◎","Сеть Tor","Не реализована","›",()->notice("Tor","Поддержка .onion пока не реализована."));section(c,"ФАЙЛЫ И ДАННЫЕ");item(c,"↓","Загрузки","Менеджер файлов","›",()->downloadPanel());item(c,"×","Очистить данные","История и данные сайтов","›",()->clearData());section(c,"О ПРИЛОЖЕНИИ");item(c,"↻","Обновление браузера","Локальный дельта-патч .aeb","›",()->updatePanel());item(c,"⚡","AetherBolt Browser","0.7.8 Alpha • GeckoView 161","›",()->notice("AetherBolt","Beyond the Limits. GeckoView • XPI. Tor и перенос пользовательских скриптов ещё не завершены."));}
+    private void settings(){LinearLayout c=panel("Настройки","Управление AetherBolt Browser",false);section(c,"ПЕРСОНАЛИЗАЦИЯ");item(c,"⌕","Поисковая система",engineName,"›",()->engineDialog());item(c,"◎","Язык результатов",searchLanguageName()+" • "+SearchLanguage.support(engineTemplate),"›",()->searchLanguages());item(c,"✧","Внешний вид",appearance,"›",()->themes());item(c,"▣","Настройки сайтов","JavaScript, изображения, ПК, масштаб, медиа","›",()->webOptions());section(c,"БЕЗОПАСНОСТЬ И МОДУЛИ");item(c,">_","DevSuite","Eruda • xterm • CyberChef • Linux • прокси","›",()->devSuitePanel());item(c,"◈","VPN • WireGuard",vpn.active()?"Туннель включён":"Отключён","›",()->vpnPanel());item(c,"◈","Конфиденциальность","Cookies, история, реклама и трекеры","›",()->privacy());item(c,"✧","Расширения и скрипты","GeckoView • XPI / JS","›",()->addonManage());item(c,"◎","Сеть Tor","Не реализована","›",()->notice("Tor","Поддержка .onion пока не реализована."));section(c,"ФАЙЛЫ И ДАННЫЕ");item(c,"↓","Загрузки","Менеджер файлов","›",()->downloadPanel());item(c,"×","Очистить данные","История и данные сайтов","›",()->clearData());section(c,"О ПРИЛОЖЕНИИ");item(c,"↻","Обновление браузера","Локальный дельта-патч .aeb","›",()->updatePanel());item(c,"⚡","AetherBolt Browser","0.7.9 Alpha • GeckoView 161","›",()->notice("AetherBolt","Beyond the Limits. GeckoView • XPI. Tor и перенос пользовательских скриптов ещё не завершены."));}
     private void clearData(){history.clear();closedPages.clear();for(Tab t:tabs)t.preview=null;prefs.edit().remove("workspaceTabs").remove("workspaceActive").apply();writeList("history",history);notice("История очищена","Данные сайтов Gecko не удалены; отдельный механизм ещё не перенесён.");}
 
     private void readList(String key,ArrayList<String> out){try{JSONArray a=new JSONArray(prefs.getString(key,"[]"));for(int i=0;i<a.length();i++)out.add(a.getString(i));}catch(JSONException ignored){}}
