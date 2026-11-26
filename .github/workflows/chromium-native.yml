@@ -1,0 +1,53 @@
+name: Chromium native build capacity
+on:
+  push:
+    branches: [chromium-edition]
+    paths: ['.github/workflows/chromium-native.yml', 'chromium/**']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: chromium-native-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  capacity:
+    runs-on: ubuntu-24.04
+    outputs:
+      ready: ${{ steps.capacity.outputs.ready }}
+    steps:
+      - uses: actions/checkout@v5
+      - name: Measure free runner resources
+        id: capacity
+        run: |
+          bash chromium/check-host.sh "$RUNNER_TEMP" | tee capacity.txt
+          if grep -qx 'READY=yes' capacity.txt; then
+            echo 'ready=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'ready=false' >> "$GITHUB_OUTPUT"
+            echo '::warning::Standard free runner cannot meet the required build capacity. Native compilation skipped.'
+          fi
+          cat capacity.txt >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: chromium-host-capacity
+          path: capacity.txt
+  native:
+    needs: capacity
+    if: needs.capacity.outputs.ready == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 350
+    steps:
+      - uses: actions/checkout@v5
+      - name: Build actual Chromium ARM64 APK
+        env:
+          AETHER_INSTALL_DEPS: '1'
+        run: |
+          bash chromium/build.sh "$RUNNER_TEMP/aetherbolt-native"
+      - name: Validate native APK
+        run: |
+          python3 chromium/verify-apk.py "$RUNNER_TEMP/aetherbolt-native/artifacts/AetherBolt-Chromium-experimental-arm64.apk"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: AetherBolt-Chromium-experimental-arm64
+          path: ${{ runner.temp }}/aetherbolt-native/artifacts/
+          if-no-files-found: error
