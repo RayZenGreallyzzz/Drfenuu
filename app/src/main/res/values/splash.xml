@@ -1,0 +1,8 @@
+<resources>
+    <color name="splash_dark">#0B1020</color>
+    <style name="AppTheme.Starting" parent="AppTheme">
+       <item name="android:windowBackground">@drawable/splash_background</item>
+       <item name="android:statusBarColor">@color/splash_dark</item>
+       <item name="android:navigationBarColor">@color/splash_dark</item>
+    </style>
+</resources>
