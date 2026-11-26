@@ -27,18 +27,20 @@ jobs:
           gradle-version: '9.5.0'
       - run: bash tests/run.sh
       - run: python3 -m unittest discover -s tools -p test_delta.py -v
-      - name: Build debug APK (retry transient dependency failures)
+      - name: Build ARM64 debug APK (retry transient dependency failures)
+        if: env.SIGNING_READY != 'true' || github.ref != 'refs/heads/gecko-edition'
         shell: bash
         run: |
           for attempt in 1 2 3; do
-            if gradle :app:assembleDebug --stacktrace > build-attempt.log 2>&1; then cat build-attempt.log; exit 0; fi
+            if gradle :app:assembleDebug -PaetherAbi=arm64-v8a --stacktrace > build-attempt.log 2>&1; then cat build-attempt.log; exit 0; fi
             cat build-attempt.log
             if ! grep -Eq '429|502|503|504|Connection reset|Read timed out' build-attempt.log || [ "$attempt" = 3 ]; then exit 1; fi
             sleep $((attempt * 25))
           done
       - uses: actions/upload-artifact@v4
+        if: env.SIGNING_READY != 'true' || github.ref != 'refs/heads/gecko-edition'
         with:
-          name: AetherBolt-gecko-alpha-debug
+          name: AetherBolt-gecko-arm64-debug-NOT-stable-signed
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
 
