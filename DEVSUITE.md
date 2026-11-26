@@ -14,3 +14,6 @@ Native AetherBolt DevSuite and proxy panels. Gecko file prompt connects to Andro
 
 ### Browser download center
 Dedicated bottom navigation button, active transfers with byte/percentage progress (when Content-Length is available), cancellation, errors, searchable persistent completed-file list including older app downloads, sorting by date, and open/share/export/delete actions. Downloads survive ordinary tab switching; Android process termination may interrupt active transfers. No resume or background service yet.
+
+### Smooth scrolling
+Gecko owns touch dispatch; native code observes gesture boundaries without intercepting input. Page-title updates are coalesced and postponed during a gesture and the initial fling window. No automatic page-load screenshots or snapshots on ordinary tab switches; capture is limited to explicit tab overview and bitmap downscaling is off the UI thread. The already attached GeckoView is reused when navigating within the same tab. No forced GPU/APZ prefs or refresh-rate override. Device frame timing is still unmeasured.

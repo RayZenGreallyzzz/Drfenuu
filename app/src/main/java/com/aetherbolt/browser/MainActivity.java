@@ -24,11 +24,33 @@ public class MainActivity extends Activity {
     private DevSuiteFeature devSuite;
     private FileTransfers transfers;
     private final Set<Tab> capturing=Collections.newSetFromMap(new IdentityHashMap<>());
+    private final Map<Tab,TextView> tabTitles=new IdentityHashMap<>();
+    private final Handler chromeHandler=new Handler(Looper.getMainLooper());
+    private boolean touchDown=false;
+    private long quietAfter=0;
+    private final Runnable titleUpdate=new Runnable(){public void run(){
+        if(isDestroyed())return;
+        if(touchDown||SystemClock.uptimeMillis()<quietAfter){chromeHandler.postDelayed(this,200);return;}
+        for(Map.Entry<Tab,TextView> e:tabTitles.entrySet()){
+            Tab t=e.getKey();TextView v=e.getValue();String title=t.home?"Новая вкладка":t.title;
+            if(!android.text.TextUtils.equals(v.getText(),title))v.setText(title);
+        }
+    }};
+    @Override public boolean dispatchTouchEvent(MotionEvent event){
+        // Observe only. Do not consume, copy, resample or redispatch Gecko input.
+        switch(event.getActionMasked()){
+            case MotionEvent.ACTION_DOWN:touchDown=true;break;
+            case MotionEvent.ACTION_UP:case MotionEvent.ACTION_CANCEL:touchDown=false;quietAfter=SystemClock.uptimeMillis()+900;break;
+            default:break;
+        }
+        return super.dispatchTouchEvent(event);
+    }
+    private void scheduleTitleUpdate(){chromeHandler.removeCallbacks(titleUpdate);chromeHandler.postDelayed(titleUpdate,Math.max(100,quietAfter-SystemClock.uptimeMillis()));}
     private FrameLayout shell,overlay; private String panelTitle="";
     private static final class PanelState {final String title;final FrameLayout view;PanelState(String t,FrameLayout v){title=t;view=v;}}
     private final ArrayDeque<PanelState> panelHistory=new ArrayDeque<>(); private Tab shownTab; private static final int SCRIPT_PICK=702; private final ArrayList<UserScript> scripts=new ArrayList<>(); private static class UserScript {String id,name,site,code;boolean enabled; UserScript(String i,String n,String o,String c,boolean e){id=i;name=n;site=o;code=c;enabled=e;}} private TextView tabCount; private TextView downloadButton; private ProgressBar progress; private android.content.SharedPreferences prefs;
     private BoltVpn vpn; private static GeckoRuntime runtime; private WebExtensionController extensions; private WebExtension scriptBridge; private final ArrayList<Tab> tabs=new ArrayList<>(); private int active=0;
-    private static class Tab { WebExtension extensionOwner; Tab opener; GeckoView web; GeckoSession session; String url="", pendingUrl=""; boolean canBack,canForward; boolean home=true; String title="Новая вкладка"; int progress=0; final HashSet<String> executed=new HashSet<>(); android.graphics.Bitmap preview, favicon; }
+    private static class Tab { WebExtension extensionOwner; Tab opener; GeckoView web; GeckoSession session; String url="", pendingUrl=""; boolean canBack,canForward,webActive=true; boolean home=true; String title="Новая вкладка"; int progress=0; final HashSet<String> executed=new HashSet<>(); android.graphics.Bitmap preview, favicon; }
     private final ArrayList<String> bookmarks=new ArrayList<>(), history=new ArrayList<>();
     private String engineName="Google", engineTemplate=Router.ENGINES[0][1];
     private volatile boolean filter=true, tracker=true; private boolean js=true, images=true, desktop=false, historyEnabled=true, thirdParty=false, autoplay=false, darkPages=false, zoom=true; private String appearance="Космос"; private final ArrayList<String> downloads=new ArrayList<>();
@@ -71,8 +93,8 @@ public class MainActivity extends Activity {
     }
     private void addTab(){if(tabs.size()>=12){toast("Лимит: 12 вкладок");return;}createTab();active=tabs.size()-1;showTab();}
     private void closeTab(int index){Tab t=tabs.remove(index);transfers.cancelUpload(t.session);if(historyEnabled&&!t.home&&t.extensionOwner==null&&Router.parse(t.url).kind==Router.Kind.WEB){closedPages.addFirst(t.url);while(closedPages.size()>20)closedPages.removeLast();}if(devSuite!=null)devSuite.detach(t.session);if(shownTab==t)shownTab=null;if(t.web.getParent() instanceof android.view.ViewGroup)((android.view.ViewGroup)t.web.getParent()).removeView(t.web);t.web.releaseSession();t.session.close();if(tabs.isEmpty()){active=0;addTab();return;}if(index<active)active--;else if(active>=tabs.size())active=tabs.size()-1;showTab();}
-    private void refreshTabs(){if(tabCount!=null){tabCount.setText(String.valueOf(tabs.size()));tabCount.setCompoundDrawablePadding(dp(5));tabCount.setCompoundDrawables(icon("▣",CYAN,20),null,null,null);}tabsBar.removeAllViews();for(int i=0;i<tabs.size();i++){final int n=i;Tab t=tabs.get(i);LinearLayout chip=row();chip.setBackground(shape(i==active?0xff30304f:PANEL,12,i==active?PURPLE:0));TextView title=label(t.home?"Новая вкладка":t.title,13,TEXT);title.setSingleLine(true);title.setEllipsize(android.text.TextUtils.TruncateAt.END);title.setMaxWidth(dp(130));title.setPadding(dp(10),dp(9),dp(8),dp(9));title.setOnClickListener(v->{active=n;showTab();});if(t.favicon!=null&&!t.home){ImageView fav=new ImageView(this);fav.setImageBitmap(t.favicon);add(chip,fav,18,18);}else {ImageView fav=new ImageView(this);fav.setImageDrawable(icon(t.home?"⚡":"◎",CYAN,18));add(chip,fav,18,18);}chip.addView(title);ImageView x=new ImageView(this);x.setImageDrawable(icon("×",TEXT,17));x.setScaleType(ImageView.ScaleType.CENTER);x.setBackground(new android.graphics.drawable.RippleDrawable(android.content.res.ColorStateList.valueOf(0x337f8cff),null,shape(0xffffffff,20,0)));x.setContentDescription("Закрыть вкладку");x.setOnClickListener(v->closeTab(n));chip.addView(x,new LinearLayout.LayoutParams(dp(44),dp(44)));add(tabsBar,chip,-2,44);}add(tabsBar,button("+","Новая вкладка",()->addTab()),44,44);}
-    private void showTab(){dismissPanel();captureShown();body.removeAllViews();Tab t=current();for(Tab other:tabs){other.session.setActive(other==t&&!t.home);if(other.session.isOpen())extensions.setTabActive(other.session,other==t&&!t.home);}shownTab=t;if(t.home){address.setText("");body.addView(home(),new FrameLayout.LayoutParams(-1,-1));}else{if(t.web.getParent() instanceof android.view.ViewGroup)((android.view.ViewGroup)t.web.getParent()).removeView(t.web);body.addView(t.web,new FrameLayout.LayoutParams(-1,-1));address.setText(t.url);}updateProgress(t);refreshTabs();address.clearFocus();if(!t.home){t.web.requestFocus();if(!t.pendingUrl.isEmpty()){String url=t.pendingUrl;t.pendingUrl="";t.session.load(new GeckoSession.Loader().uri(url));}}}
+    private void refreshTabs(){if(tabCount!=null){tabCount.setText(String.valueOf(tabs.size()));tabCount.setCompoundDrawablePadding(dp(5));tabCount.setCompoundDrawables(icon("▣",CYAN,20),null,null,null);}tabTitles.clear();tabsBar.removeAllViews();for(int i=0;i<tabs.size();i++){final int n=i;Tab t=tabs.get(i);LinearLayout chip=row();chip.setBackground(shape(i==active?0xff30304f:PANEL,12,i==active?PURPLE:0));TextView title=label(t.home?"Новая вкладка":t.title,13,TEXT);tabTitles.put(t,title);title.setSingleLine(true);title.setEllipsize(android.text.TextUtils.TruncateAt.END);title.setMaxWidth(dp(130));title.setPadding(dp(10),dp(9),dp(8),dp(9));title.setOnClickListener(v->{active=n;showTab();});if(t.favicon!=null&&!t.home){ImageView fav=new ImageView(this);fav.setImageBitmap(t.favicon);add(chip,fav,18,18);}else {ImageView fav=new ImageView(this);fav.setImageDrawable(icon(t.home?"⚡":"◎",CYAN,18));add(chip,fav,18,18);}chip.addView(title);ImageView x=new ImageView(this);x.setImageDrawable(icon("×",TEXT,17));x.setScaleType(ImageView.ScaleType.CENTER);x.setBackground(new android.graphics.drawable.RippleDrawable(android.content.res.ColorStateList.valueOf(0x337f8cff),null,shape(0xffffffff,20,0)));x.setContentDescription("Закрыть вкладку");x.setOnClickListener(v->closeTab(n));chip.addView(x,new LinearLayout.LayoutParams(dp(44),dp(44)));add(tabsBar,chip,-2,44);}add(tabsBar,button("+","Новая вкладка",()->addTab()),44,44);}
+    private void showTab(){dismissPanel();Tab t=current();for(Tab other:tabs){boolean shouldBeActive=other==t&&!t.home;if(other.webActive!=shouldBeActive){other.session.setActive(shouldBeActive);if(other.session.isOpen())extensions.setTabActive(other.session,shouldBeActive);other.webActive=shouldBeActive;}}shownTab=t;if(t.home){body.removeAllViews();address.setText("");body.addView(home(),new FrameLayout.LayoutParams(-1,-1));}else{if(t.web.getParent()!=body){body.removeAllViews();if(t.web.getParent() instanceof android.view.ViewGroup)((android.view.ViewGroup)t.web.getParent()).removeView(t.web);body.addView(t.web,new FrameLayout.LayoutParams(-1,-1));}if(!android.text.TextUtils.equals(address.getText(),t.url))address.setText(t.url);}updateProgress(t);refreshTabs();address.clearFocus();if(!t.home){t.web.requestFocus();if(!t.pendingUrl.isEmpty()){String url=t.pendingUrl;t.pendingUrl="";t.session.load(new GeckoSession.Loader().uri(url));}}}
     private void updateProgress(Tab t){if(!tabs.isEmpty()&&t==current()){progress.setProgress(t.progress);progress.setVisibility(!t.home&&t.progress>0&&t.progress<100?View.VISIBLE:View.INVISIBLE);}}
     private View home(){
         ScrollView sc=new ScrollView(this);sc.setFillViewport(true);sc.setBackground(appearance.equals("Космос")?new SpaceArt():shape(themeBg(),0,0));LinearLayout box=column();box.setGravity(Gravity.CENTER_HORIZONTAL|Gravity.CENTER_VERTICAL);box.setPadding(dp(18),dp(26),dp(18),dp(30));sc.addView(box,new ScrollView.LayoutParams(-1,-2));
@@ -276,12 +298,19 @@ public class MainActivity extends Activity {
     private GradientDrawable glass(int radius,int stroke){GradientDrawable d=new GradientDrawable(GradientDrawable.Orientation.TL_BR,new int[]{0xff242a49,0xff171d34,0xff10162b});d.setCornerRadius(dp(radius));if(stroke!=0)d.setStroke(dp(1),stroke);return d;}
     private android.graphics.drawable.Drawable glassRipple(int radius,int stroke){return new android.graphics.drawable.RippleDrawable(android.content.res.ColorStateList.valueOf(0x447f8cff),glass(radius,stroke),null);}
     private void captureShown(){
+        if(touchDown)return;
         Tab t=shownTab;if(t==null||t.home||t.extensionOwner!=null||!historyEnabled||!tabs.contains(t)||!t.web.isAttachedToWindow()||!capturing.add(t))return;
         String url=t.url;
-        try{t.web.capturePixels().then(bitmap->{runOnUiThread(()->{
-            capturing.remove(t);if(bitmap==null)return;
-            if(tabs.contains(t)&&url.equals(t.url)&&historyEnabled&&bitmap.getWidth()>0&&bitmap.getHeight()>0){float scale=Math.min(1f,Math.min(320f/bitmap.getWidth(),200f/bitmap.getHeight()));android.graphics.Bitmap thumb=android.graphics.Bitmap.createScaledBitmap(bitmap,Math.max(1,Math.round(bitmap.getWidth()*scale)),Math.max(1,Math.round(bitmap.getHeight()*scale)),true);t.preview=thumb;}
-        });return null;},err->{runOnUiThread(()->capturing.remove(t));return null;});}catch(RuntimeException e){capturing.remove(t);}
+        try{t.web.capturePixels().then(bitmap->{
+            if(bitmap==null){runOnUiThread(()->capturing.remove(t));return null;}
+            new Thread(()->{
+                android.graphics.Bitmap thumb=null;
+                try{int w=bitmap.getWidth(),h=bitmap.getHeight();if(w>0&&h>0){float scale=Math.min(1f,Math.min(320f/w,200f/h));thumb=android.graphics.Bitmap.createScaledBitmap(bitmap,Math.max(1,Math.round(w*scale)),Math.max(1,Math.round(h*scale)),true);}}
+                catch(RuntimeException ignored){}
+                final android.graphics.Bitmap ready=thumb;
+                runOnUiThread(()->{capturing.remove(t);if(!isDestroyed()&&ready!=null&&tabs.contains(t)&&url.equals(t.url)&&historyEnabled)t.preview=ready;});
+            },"aether-thumbnail").start();return null;
+        },err->{runOnUiThread(()->capturing.remove(t));return null;});}catch(RuntimeException e){capturing.remove(t);}
     }
 
     private View previewFor(Tab t){FrameLayout frame=new FrameLayout(this);frame.setBackground(glass(13,0xff3d4772));frame.setClipToOutline(true);if(!t.home&&t.preview!=null){ImageView image=new ImageView(this);image.setImageBitmap(t.preview);image.setScaleType(ImageView.ScaleType.CENTER_CROP);frame.addView(image,new FrameLayout.LayoutParams(-1,-1));}else{if(t.home)frame.setBackground(new SpaceArt());LinearLayout center=column();center.setGravity(Gravity.CENTER);ImageView img=new ImageView(this);if(t.home)img.setImageResource(R.drawable.bolt);else if(t.favicon!=null)img.setImageBitmap(t.favicon);else img.setImageDrawable(icon("◎",CYAN,38));add(center,img,46,46);TextView name=label(t.home?"AetherBolt":t.title,12,TEXT);name.setGravity(Gravity.CENTER);name.setMaxLines(2);center.addView(name);frame.addView(center,new FrameLayout.LayoutParams(-1,-1));}return frame;}
@@ -319,9 +348,9 @@ public class MainActivity extends Activity {
     });t.session.setProgressDelegate(new GeckoSession.ProgressDelegate(){
         @Override public void onPageStart(GeckoSession session,String url){t.progress=1;t.url=url;updateProgress(t);}
         @Override public void onProgressChange(GeckoSession session,int value){t.progress=value;updateProgress(t);}
-        @Override public void onPageStop(GeckoSession session,boolean success){t.progress=100;updateProgress(t);if(success&&historyEnabled&&Router.parse(t.url).kind==Router.Kind.WEB)remember(history,"history",t.url,200);if(success&&shownTab==t)t.web.postDelayed(()->{if(shownTab==t)captureShown();},350);}
+        @Override public void onPageStop(GeckoSession session,boolean success){t.progress=100;updateProgress(t);if(success&&historyEnabled&&Router.parse(t.url).kind==Router.Kind.WEB)remember(history,"history",t.url,200);}
     });t.session.setContentDelegate(new GeckoSession.ContentDelegate(){
-        @Override public void onTitleChange(GeckoSession session,String title){if(title!=null&&!title.isEmpty()){t.title=title;if(tabs.contains(t))refreshTabs();}}
+        @Override public void onTitleChange(GeckoSession session,String title){if(title!=null&&!title.isEmpty()&&!title.equals(t.title)){t.title=title;if(tabs.contains(t))scheduleTitleUpdate();}}
         @Override public void onExternalResponse(GeckoSession session,WebResponse response){saveGeckoDownload(response);}
     });}
 
@@ -476,5 +505,5 @@ public class MainActivity extends Activity {
     private void saveBookmark(){Tab t=current();String u=t.url;if(t.home||u==null||Router.parse(u).kind!=Router.Kind.WEB){toast("Сначала откройте сайт");return;}remember(bookmarks,"bookmarks",u,200);toast("Закладка сохранена");}
     private void listDialog(String title,ArrayList<String> data,String key){LinearLayout c=panel(title,data.size()+" записей",false);if(data.isEmpty()){item(c,"☆","Пока пусто","Здесь появятся сохранённые страницы","",()->{});return;}for(String u:new ArrayList<>(data)){String host=Uri.parse(u).getHost();item(c,key.equals("history")?"◷":"☆",host==null?u:host,u,"›",()->{dismissPanel();navigate(u);});}item(c,"×","Очистить список","","›",()->{LinearLayout confirm=panel("Очистить список?","Действие нельзя отменить",true);item(confirm,"×","Удалить все записи","","",()->{data.clear();writeList(key,data);listDialog(title,data,key);});item(confirm,"‹","Отмена","","",()->listDialog(title,data,key));});}
     @Override public void onConfigurationChanged(android.content.res.Configuration c){super.onConfigurationChanged(c);tabStrip.setVisibility(c.screenWidthDp>=600?View.VISIBLE:View.GONE);showTab();}
-    @Override protected void onDestroy(){if(transfers!=null)transfers.destroy();if(devSuite!=null)devSuite.stop();if(addonPopup!=null)addonPopup.dismiss();for(WebExtension e:registeredAddons.values()){e.setActionDelegate(null);e.setTabDelegate(null);}if(body!=null)body.removeAllViews();for(Tab t:tabs){t.web.releaseSession();t.session.close();}super.onDestroy();}
+    @Override protected void onDestroy(){chromeHandler.removeCallbacksAndMessages(null);if(transfers!=null)transfers.destroy();if(devSuite!=null)devSuite.stop();if(addonPopup!=null)addonPopup.dismiss();for(WebExtension e:registeredAddons.values()){e.setActionDelegate(null);e.setTabDelegate(null);}if(body!=null)body.removeAllViews();for(Tab t:tabs){t.web.releaseSession();t.session.close();}super.onDestroy();}
 }
