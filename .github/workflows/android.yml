@@ -67,6 +67,7 @@ jobs:
           "$TOOLS/zipalign" -P 16 -f 4 "$INPUT" "$RUNNER_TEMP/aligned.apk"
           "$TOOLS/apksigner" sign --ks "$KEY" --ks-type PKCS12 --ks-key-alias aetherbolt --ks-pass env:AETHER_KEYSTORE_PASSWORD --key-pass env:AETHER_KEYSTORE_PASSWORD --out signed/AetherBolt-arm64.apk "$RUNNER_TEMP/aligned.apk"
           "$TOOLS/apksigner" verify --verbose --print-certs signed/AetherBolt-arm64.apk | tee signed/signature.txt
+          grep -Fx "Signer #1 certificate SHA-256 digest: f6d103a47d5604e1b37f74d6c33b0db192a6c3f446556e1542013efee73db421" signed/signature.txt || { echo "Unexpected signing certificate; refusing publication"; exit 1; }
           (cd signed && sha256sum AetherBolt-arm64.apk > SHA256SUMS)
       - uses: actions/upload-artifact@v4
         if: github.ref == 'refs/heads/gecko-edition' && env.SIGNING_READY == 'true'

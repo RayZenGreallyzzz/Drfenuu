@@ -11,3 +11,6 @@ Never put either value in a public file, issue, message or commit. The signing k
 The earlier debug APK is normally signed by an ephemeral debug key. It cannot be updated in place using the new key unless the certificates happen to match. Export important data before uninstalling, and keep original ZIP/JS archives. Subsequent releases must increment versionCode and use the same key and application ID.
 
 This stage provides stable signing and an ABI-specific APK. Local .aeb delta reconstruction and installation are implemented experimentally; automatic downloads, patch publication and data migration are not. Delta patches must reconstruct the exact new signed APK, validate base and target hashes, verify signer and version, and fall back to full APK when needed. Android still requires user confirmation for sideloaded updates.
+
+## Permanent signing identity
+The owner has been provided a private PKCS12 backup. Configure the two existing GitHub Actions secrets using that backup; do not generate a replacement key using the setup script. CI verifies the expected public certificate SHA-256 fingerprint: `f6d103a47d5604e1b37f74d6c33b0db192a6c3f446556e1542013efee73db421`. The private key and password must never be committed. If setup is incomplete, signed builds are skipped.
