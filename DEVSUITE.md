@@ -8,3 +8,6 @@
 - APK builds through existing CI; branch debug signing does not match stable key. No signing secrets are included.
 
 - CyberChef gzip duplicates are validated and normalized before Android asset merging. The English OCR dictionary is unpacked and its worker is configured to load raw traineddata.
+
+## 0.7.7
+Native AetherBolt DevSuite and proxy panels. Gecko file prompt connects to Android Storage Access Framework for single and multiple files; folder and direct camera capture not yet implemented. Download streams use MediaStore Download/AetherBolt on Android 10+, app Downloads on Android 8/9 with export/share. Same-origin blob navigation allowed. Successful compile does not replace on-device upload/download testing.
