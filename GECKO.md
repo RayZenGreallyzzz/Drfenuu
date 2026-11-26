@@ -1,0 +1,2 @@
+# Gecko Edition 0.6
+Separate app package. GeckoView 161, signed XPI install, enable/disable/uninstall, local archive storage, bundled direct link finder, experimental response-stream downloads. No private user archives are committed. ZIP and JS execution, extension action popups, downloads API, Tor, full browser settings and compatibility testing remain incomplete. Finder does not replace network capture or existing downloaders.

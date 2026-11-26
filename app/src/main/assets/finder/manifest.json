@@ -1,0 +1,30 @@
+{
+  "manifest_version": 2,
+  "name": "AetherBolt 3D Link Finder",
+  "version": "0.1.0",
+  "description": "Finds direct links already present on supported 3D pages.",
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "finder@aetherbolt.local",
+      "data_collection_permissions": {
+        "required": [
+          "none"
+        ]
+      }
+    }
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://www.mixamo.com/*",
+        "https://www.meshy.ai/*",
+        "https://www.tripo3d.ai/*",
+        "https://studio.tripo3d.ai/*"
+      ],
+      "js": [
+        "finder.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ]
+}
