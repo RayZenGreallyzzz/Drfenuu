@@ -41,7 +41,31 @@ final class BoltVpn {
     private void selectInternal(String name)throws Exception{if(!names.contains(name))throw new IOException("Профиль не найден");Config next=parse(read(new FileInputStream(new File(folder(),name))));config=next;selected=name;selection().edit().putString("selected",name).apply();}
     private String displayName(Uri uri){String name="";try(android.database.Cursor c=context.getContentResolver().query(uri,new String[]{android.provider.OpenableColumns.DISPLAY_NAME},null,null,null)){if(c!=null&&c.moveToFirst())name=c.getString(0);}catch(Exception ignored){}return name==null?"":name;}
     private String profileName(String raw,String name){String safe=name.replaceAll("(?i)\\.txt$","").replaceAll("(?i)\\.conf$","").replaceAll("[^A-Za-z0-9._ -]","_").trim();if(safe.isEmpty()||safe.equals(".")||safe.equals(".."))safe="WireGuard";if(safe.length()>70)safe=safe.substring(0,70);return safe+".conf";}
-    void importMany(List<Uri> uris,Done done){if(busy||active()){done.finish("Сначала отключи VPN");return;}if(uris.isEmpty()||uris.size()>100){done.finish("Выбери от 1 до 100 файлов");return;}busy=true;worker.execute(()->{int added=0,duplicates=0,failed=0;try{if(!folder().isDirectory()&&!folder().mkdirs())throw new IOException("Нет папки профилей");refresh();for(Uri uri:uris){try{String raw=read(context.getContentResolver().openInputStream(uri));parse(raw);String name=profileName(raw,displayName(uri));File dst=new File(folder(),name);int i=2;boolean duplicate=false;while(dst.exists()){if(raw.equals(read(new FileInputStream(dst)))){duplicate=true;break;}dst=new File(folder(),name.substring(0,name.length()-5)+" ("+(i++)+").conf");}if(duplicate){duplicates++;continue;}if(names.size()+added>=500)throw new IOException("Лимит профилей");store(dst,raw);added++;}catch(Exception ex){failed++;}}refresh();if(!ready()&&!names.isEmpty())selectInternal(names.get(0));}catch(Exception e){failed++;}finally{busy=false;}done.finish("Добавлено: "+added+" • Повторы: "+duplicates+" • Ошибки: "+failed);});}
+    private int importOne(String raw,String filename)throws Exception{
+        parse(raw);String name=profileName(raw,filename);File dst=new File(folder(),name);int i=2;
+        while(dst.exists()){if(raw.equals(read(new FileInputStream(dst))))return 0;dst=new File(folder(),name.substring(0,name.length()-5)+" ("+(i++)+").conf");}
+        if(names.size()>=500)throw new IOException("Лимит профилей");store(dst,raw);refresh();return 1;
+    }
+    private String readEntry(InputStream in)throws IOException{ByteArrayOutputStream out=new ByteArrayOutputStream();byte[] b=new byte[4096];int n;while((n=in.read(b))!=-1){if(out.size()+n>65536)throw new IOException("Лимит 64 КБ");out.write(b,0,n);}return new String(out.toByteArray(),StandardCharsets.UTF_8);}
+    void importMany(List<Uri> uris,Done done){
+        if(busy||active()){done.finish("Сначала отключи VPN");return;}if(uris.isEmpty()||uris.size()>100){done.finish("Выбери от 1 до 100 файлов");return;}busy=true;
+        worker.execute(()->{int added=0,duplicates=0,failed=0,entries=0;try{
+            if(!folder().isDirectory()&&!folder().mkdirs())throw new IOException("Нет папки профилей");refresh();
+            for(Uri uri:uris){try{
+                String name=displayName(uri);if(name.toLowerCase(Locale.ROOT).endsWith(".zip")){
+                    try(InputStream raw=context.getContentResolver().openInputStream(uri);java.util.zip.ZipInputStream z=new java.util.zip.ZipInputStream(raw)){
+                        java.util.zip.ZipEntry e;while((e=z.getNextEntry())!=null){
+                            if(++entries>100)throw new IOException("Лимит 100 профилей");
+                            String entry=e.getName(),lower=entry.toLowerCase(Locale.ROOT);
+                            if(e.isDirectory()||entry.contains("/")||entry.contains("\\")||(!lower.endsWith(".conf")&&!lower.endsWith(".conf.txt")))throw new IOException("ZIP должен содержать только .conf в корне");
+                            String cfg=readEntry(z);try{if(importOne(cfg,entry)==1)added++;else duplicates++;}catch(Exception ex){failed++;}z.closeEntry();
+                        }
+                    }
+                }else{if(++entries>100)throw new IOException("Лимит 100 профилей");if(importOne(read(context.getContentResolver().openInputStream(uri)),name)==1)added++;else duplicates++;}
+            }catch(Exception ex){failed++;}if(entries>=100)break;}
+            refresh();if(!ready()&&!names.isEmpty())selectInternal(names.get(0));
+        }catch(Exception e){failed++;}finally{busy=false;}done.finish("Добавлено: "+added+" • Повторы: "+duplicates+" • Ошибки: "+failed);});
+    }
     void select(String name,Done done){if(busy||active()){done.finish("Отключи VPN перед выбором сервера");return;}busy=true;worker.execute(()->{String err=null;try{selectInternal(name);}catch(Exception e){err="Не удалось выбрать профиль";}finally{busy=false;}done.finish(err);});}
     private Config parse(String raw)throws Exception{
         if(raw.length()>65536)throw new IOException("Конфигурация слишком большая");

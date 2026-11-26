@@ -15,8 +15,8 @@ android {
             }
         }
         targetSdk 35
-        versionCode 21
-        versionName '0.7.3-gecko-alpha'
+        versionCode 22
+        versionName '0.7.4-gecko-alpha'
     }
     compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
 }
