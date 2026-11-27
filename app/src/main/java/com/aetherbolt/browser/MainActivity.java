@@ -133,7 +133,7 @@ public class MainActivity extends Activity {
             if(startup!=null)startup.stage(1,"Запуск GeckoView…");
             if(runtime==null)runtime=GeckoRuntime.create(getApplicationContext());
             extensions=runtime.getWebExtensionController();
-            vpn=BoltVpn.get(this);vpn.restore(err->{});applyProtection();
+            vpn=BoltVpn.get(this);vpn.restore(err->{});applyProtection();applyDnsSettings();
             if(startup!=null){startup.stage(2,"Движок создан • подготовка вкладок");startup.postOnAnimation(this::finishBrowserInitialization);}
             else finishBrowserInitialization();
         }catch(RuntimeException e){startupError(e);}
@@ -204,7 +204,7 @@ public class MainActivity extends Activity {
         String[] names={"Google","DuckDuckGo","Bing","Brave Search","Qwant","Яндекс","Ahmia","Добавить"};String[] icons={"G","D","b","B","Q","Я","◎","+"};int[] colors={0xff79aaff,0xffff9c50,CYAN,0xffff855d,PURPLE,0xffff7d8a,0xffc69cff,TEXT};Runnable[] actions=new Runnable[8];for(int i=0;i<6;i++){final int n=i;actions[i]=()->setEngine(Router.ENGINES[n][0],Router.ENGINES[n][1]);}actions[6]=()->setEngine(Router.ENGINES[10][0],Router.ENGINES[10][1]);actions[7]=()->customEngine();
         int cols=getResources().getConfiguration().screenWidthDp>=720?8:4;grid(box,names,icons,colors,actions,cols);
         grid(box,new String[]{"Дополнения","Загрузки","Закладки","История","Настройки","Вкладки"},new String[]{"✧","↓","☆","◷","⚙","▣"},new int[]{PURPLE,CYAN},new Runnable[]{()->quickAddons(),()->downloadPanel(),()->listDialog("Закладки",bookmarks,"bookmarks"),()->listDialog("История",history,"history"),()->settings(),()->tabDialog()},getResources().getConfiguration().screenWidthDp>=650?6:3);
-        TextView note=label("GECKO ALPHA 0.8.3   •   Tor пока недоступен",11,MUTED);note.setGravity(Gravity.CENTER);add(box,note,-1,28);return sc;
+        TextView note=label("GECKO ALPHA 0.8.4   •   Tor пока недоступен",11,MUTED);note.setGravity(Gravity.CENTER);add(box,note,-1,28);return sc;
     }
 
     private android.graphics.drawable.Drawable ripple(int color,int radius,int stroke){return new android.graphics.drawable.RippleDrawable(android.content.res.ColorStateList.valueOf(0x337f8cff),shape(color,radius,stroke),null);}
@@ -308,7 +308,7 @@ public class MainActivity extends Activity {
 
     private void reader(){notice("Reader","Перенос Reader ещё не завершён.");}
 
-    private void privacy(){LinearLayout c=panel("Конфиденциальность","Gecko Edition",false);option(c,"◈","Блокировать известные трекеры","Gecko: списки трекеров и cookies","tracker",tracker,()->privacy());option(c,"◷","Сохранять историю","История и восстановление вкладок","historyEnabled",historyEnabled,()->{if(!historyEnabled)saveTabs();privacy();});item(c,"×","Очистить историю","История AetherBolt","›",()->clearData());item(c,"◎","Tor","Не реализован","›",()->notice("Tor","Нет интеграции Tor. Не используй для анонимности."));}
+    private void privacy(){LinearLayout c=panel("Конфиденциальность","Gecko Edition",false);item(c,"◈","AdBlock Pro","Управление uBlock Origin","›",this::adBlockPanel);item(c,"◎","DNS Manager","Настройки DNS-over-HTTPS","›",this::dnsPanel);option(c,"◈","Блокировать известные трекеры","Gecko: списки трекеров и cookies","tracker",tracker,()->privacy());option(c,"◷","Сохранять историю","История и восстановление вкладок","historyEnabled",historyEnabled,()->{if(!historyEnabled)saveTabs();privacy();});item(c,"×","Очистить историю","История AetherBolt","›",()->clearData());item(c,"◎","Tor","Не реализован","›",()->notice("Tor","Нет интеграции Tor. Не используй для анонимности."));}
 
     private void performanceCenter(){
         LinearLayout c=panel("Performance Center","AetherBolt • управление нагрузкой",false);
@@ -697,6 +697,84 @@ public class MainActivity extends Activity {
         if(e==null||e.metaData==null||e.metaData.baseUrl==null){toast("Локальные инструменты ещё загружаются");return;}
         if(tabs.size()>=12){toast("Закройте одну вкладку");return;}Tab parent=current();Tab t=createTab();active=tabs.size()-1;t.opener=parent;t.extensionOwner=e;t.home=false;t.url=e.metaData.baseUrl+page;showTab();t.session.load(new GeckoSession.Loader().uri(t.url));
     }
+    private static final String UBO_ID="uBlock0@raymondhill.net";
+    private void adBlockPanel(){
+        LinearLayout c=panel("AdBlock Pro","uBlock Origin • официальный модуль Firefox",false);
+        section(c,"ЗАЩИТА GECKO");
+        option(c,"◈","Блокировка известных трекеров","Встроенная защита GeckoView","tracker",tracker,this::adBlockPanel);
+        section(c,"МОДУЛЬ БЛОКИРОВКИ");
+        TextView state=label("Проверка установленных расширений…",14,MUTED);c.addView(state);
+        extensions.list().then(list->{runOnUiThread(()->{
+            if(isDestroyed()||!c.isAttachedToWindow())return;
+            WebExtension found=null;
+            for(WebExtension e:list)if(UBO_ID.equals(e.id)){found=e;break;}
+            if(found==null){
+                state.setText("uBlock Origin не установлен");
+                item(c,"↓","Установить uBlock Origin","Загрузка из официального Mozilla Add-ons; требуется согласие","›",()->confirmXpi("https://addons.mozilla.org/firefox/downloads/latest/ublock-origin/latest.xpi"));
+            }else{
+                final WebExtension e=found;registerAddon(e);
+                state.setText(e.metaData!=null&&e.metaData.enabled?"uBlock Origin включён":"uBlock Origin отключён");
+                item(c,"⚙","Управление модулем","Включение, отключение, удаление","›",()->extensionDetail(e));
+                if(e.metaData!=null&&e.metaData.enabled)item(c,"◈","Панель uBlock Origin","EasyList, EasyPrivacy, собственные правила и исключения в интерфейсе расширения","›",()->launchAddon(e));
+            }
+            section(c,"ВАЖНО");
+            item(c,"◎","Фильтры","Полные списки и правила обрабатывает расширение, а не дублирующий движок AetherBolt. Совместимость панели зависит от GeckoView.","",()->{});
+        });return null;},err->{runOnUiThread(()->{if(!isDestroyed()&&state.isAttachedToWindow())state.setText("Не удалось проверить расширения");});return null;});
+    }
+    private String dnsMode(){return prefs.getString("dnsMode","system");}
+    private String dnsUri(){return prefs.getString("dnsUri",DnsSettings.PROVIDERS[0][1]);}
+    private boolean applyDnsSettings(){
+        try{
+            GeckoRuntimeSettings cfg=runtime.getSettings();
+            String mode=dnsMode(),uri=dnsUri();
+            if(!DnsSettings.validMode(mode)||"system".equals(mode)||!DnsSettings.validEndpoint(uri)){
+                cfg.setTrustedRecursiveResolverMode(GeckoRuntimeSettings.TRR_MODE_DISABLED);
+            }else{
+                cfg.setTrustedRecursiveResolverUri(uri);
+                cfg.setTrustedRecursiveResolverMode("strict".equals(mode)?GeckoRuntimeSettings.TRR_MODE_ONLY:GeckoRuntimeSettings.TRR_MODE_FIRST);
+            }
+            return true;
+        }catch(RuntimeException e){toast("Не удалось применить DNS. Проверьте настройки.");return false;}
+    }
+    private void dnsPanel(){
+        LinearLayout c=panel("DNS Manager","GeckoView • DNS-over-HTTPS",false);
+        String mode=dnsMode(),uri=dnsUri();
+        section(c,"РЕЖИМ");
+        item(c,"◎","Системный DNS","Настройки Android и VPN","system".equals(mode)?"●":"○",()->changeDns("system",uri));
+        item(c,"◈","DoH с резервом","При ошибке возможен обычный DNS","fallback".equals(mode)?"●":"○",()->changeDns("fallback",uri));
+        item(c,"◈","Строгий DoH","Без обычного fallback для стандартных запросов TRR; сайты могут не открываться","strict".equals(mode)?"●":"○",()->changeDns("strict",uri));
+        section(c,"ПРОВАЙДЕР");
+        for(String[] p:DnsSettings.PROVIDERS)item(c,"◎",p[0],p[1],p[1].equals(uri)?"●":"○",()->changeDns(mode,p[1]));
+        item(c,"+","Свой HTTPS-резолвер","Адрес DNS-over-HTTPS, например /dns-query","›",this::customDns);
+        section(c,"СТАТУС");
+        item(c,"◎","Настроенный режим: "+mode,"Резолвер: "+uri,"",()->{});
+        item(c,"↻","Проверка соединения","Открыть обычную HTTPS-страницу. Это не тест DNS-утечек.","›",()->{dismissPanel();navigate("https://example.org/");});
+        item(c,"◎","Ограничения","DoH касается GeckoView, не всего устройства. VPN, прокси, исключения Gecko и разрешение адреса самого DNS-сервера могут отличаться. DoH не обеспечивает анонимность.","",()->{});
+    }
+    private void customDns(){
+        LinearLayout c=panel("Свой DNS-over-HTTPS","Только HTTPS",false);
+        EditText input=field("https://resolver.example/dns-query");input.setText(dnsUri());add(c,input,-1,58);
+        item(c,"✓","Сохранить","Адрес должен принадлежать доверенному провайдеру","›",()->{
+            String uri=input.getText().toString().trim();
+            if(!DnsSettings.validEndpoint(uri)){input.setError("Нужен корректный HTTPS URL без логина и фрагмента");return;}
+            changeDns(dnsMode(),uri);
+        });
+    }
+    private void changeDns(String mode,String uri){
+        if(!DnsSettings.validMode(mode)||!DnsSettings.validEndpoint(uri)){toast("Некорректные настройки DNS");return;}
+        Runnable save=()->{
+            String oldMode=dnsMode(),oldUri=dnsUri();
+            prefs.edit().putString("dnsMode",mode).putString("dnsUri",uri).apply();
+            if(!applyDnsSettings()){
+                prefs.edit().putString("dnsMode",oldMode).putString("dnsUri",oldUri).apply();applyDnsSettings();
+            }
+            dnsPanel();
+        };
+        if("system".equals(mode)){save.run();return;}
+        new AlertDialog.Builder(this).setTitle("Изменить DNS?")
+            .setMessage("DNS-запросы GeckoView будут направляться выбранному провайдеру. VPN и SOCKS могут использовать другие правила. При сбоях вернитесь к системному DNS.")
+            .setNegativeButton("Отмена",null).setPositiveButton("Применить",(d,w)->save.run()).show();
+    }
     private void applyProtection(){
         runtime.getSettings().getContentBlocking().setAntiTracking(tracker?ContentBlocking.AntiTracking.DEFAULT:0);
         runtime.getSettings().getContentBlocking().setCookieBehavior(tracker?ContentBlocking.CookieBehavior.ACCEPT_NON_TRACKERS:ContentBlocking.CookieBehavior.ACCEPT_ALL);
@@ -705,7 +783,7 @@ public class MainActivity extends Activity {
     @Override protected void onStop(){if(videoSuspend)for(Tab t:tabs){if(t.session!=null&&t.session.isOpen()&&t.webActive){t.session.setActive(false);extensions.setTabActive(t.session,false);t.webActive=false;}}super.onStop();}
     @Override protected void onStart(){super.onStart();if(prefs!=null)applyVideoPower();if(!tabs.isEmpty()){Tab t=current();if(!t.home&&t.session!=null&&t.session.isOpen()&&!t.webActive){t.session.setActive(true);extensions.setTabActive(t.session,true);t.webActive=true;}}}
     private void menu(){
-        LinearLayout c=panel("AetherBolt","0.8.3 DevSuite • Быстрый доступ",true);
+        LinearLayout c=panel("AetherBolt","0.8.4 DevSuite • Быстрый доступ",true);
         grid(c,new String[]{"Новая вкладка","Вкладки","Вперёд","Закладка","История","Загрузки","Расширения","DevSuite","VPN","Защита","Настройки","Закладки"},new String[]{"+","▣","›","☆","◷","↓","✧",">_","◈","◈","⚙","☆"},new int[]{CYAN,PURPLE},new Runnable[]{()->addTab(),()->tabDialog(),()->{dismissPanel();if(!current().home&&current().session!=null&&current().canForward)current().session.goForward();},()->saveBookmark(),()->listDialog("История",history,"history"),()->downloadPanel(),()->quickAddons(),()->devSuitePanel(),()->vpnPanel(),()->privacy(),()->settings(),()->listDialog("Закладки",bookmarks,"bookmarks")},3);
     }
 
@@ -722,7 +800,7 @@ public class MainActivity extends Activity {
     private void startVpn(){vpn.change(true,this::vpnDone);}
     private void vpnDone(String err){runOnUiThread(()->{if(isFinishing()||isDestroyed())return;if(err!=null)notice("VPN",err);else vpnPanel();});}
 
-    private void settings(){LinearLayout c=panel("Настройки","Управление AetherBolt Browser",false);section(c,"ПЕРСОНАЛИЗАЦИЯ");item(c,"⌕","Поисковая система",engineName,"›",()->engineDialog());item(c,"◎","Язык результатов",searchLanguageName()+" • "+SearchLanguage.support(engineTemplate),"›",()->searchLanguages());item(c,"✧","Внешний вид",appearance,"›",()->themes());item(c,"▣","Настройки сайтов","JavaScript, изображения, ПК, масштаб, медиа","›",()->webOptions());section(c,"ПРОИЗВОДИТЕЛЬНОСТЬ");item(c,"◎","Performance Center","Профили • память • батарея • трафик • вкладки","›",this::performanceCenter);item(c,"▶","Видео и производительность","Настройка нагрузки на планшет • диагностика","›",this::videoSettings);section(c,"БЕЗОПАСНОСТЬ И МОДУЛИ");item(c,">_","DevSuite","Eruda • xterm • CyberChef • Linux • прокси","›",()->devSuitePanel());item(c,"◈","VPN • WireGuard",vpn.active()?"Туннель включён":"Отключён","›",()->vpnPanel());item(c,"◈","Конфиденциальность","Cookies, история, реклама и трекеры","›",()->privacy());item(c,"✧","Расширения и скрипты","GeckoView • XPI / JS","›",()->addonManage());item(c,"◎","Сеть Tor","Не реализована","›",()->notice("Tor","Поддержка .onion пока не реализована."));section(c,"ФАЙЛЫ И ДАННЫЕ");item(c,"↓","Загрузки","Менеджер файлов","›",()->downloadPanel());item(c,"×","Очистить данные","История и данные сайтов","›",()->clearData());section(c,"О ПРИЛОЖЕНИИ");item(c,"↻","Обновление браузера","Локальный дельта-патч .aeb","›",()->updatePanel());item(c,"⚡","AetherBolt Browser","0.8.3 Alpha • GeckoView 161","›",()->notice("AetherBolt","Beyond the Limits. GeckoView • XPI. Tor и перенос пользовательских скриптов ещё не завершены."));}
+    private void settings(){LinearLayout c=panel("Настройки","Управление AetherBolt Browser",false);section(c,"ПЕРСОНАЛИЗАЦИЯ");item(c,"⌕","Поисковая система",engineName,"›",()->engineDialog());item(c,"◎","Язык результатов",searchLanguageName()+" • "+SearchLanguage.support(engineTemplate),"›",()->searchLanguages());item(c,"✧","Внешний вид",appearance,"›",()->themes());item(c,"▣","Настройки сайтов","JavaScript, изображения, ПК, масштаб, медиа","›",()->webOptions());section(c,"ПРОИЗВОДИТЕЛЬНОСТЬ");item(c,"◎","Performance Center","Профили • память • батарея • трафик • вкладки","›",this::performanceCenter);item(c,"▶","Видео и производительность","Настройка нагрузки на планшет • диагностика","›",this::videoSettings);section(c,"БЕЗОПАСНОСТЬ И МОДУЛИ");item(c,">_","DevSuite","Eruda • xterm • CyberChef • Linux • прокси","›",()->devSuitePanel());item(c,"◈","VPN • WireGuard",vpn.active()?"Туннель включён":"Отключён","›",()->vpnPanel());item(c,"◈","Конфиденциальность","Cookies, история, реклама и трекеры","›",()->privacy());item(c,"◈","AdBlock Pro","uBlock Origin • управление фильтрами","›",this::adBlockPanel);item(c,"◎","DNS Manager","Системный DNS / DNS-over-HTTPS","›",this::dnsPanel);item(c,"✧","Расширения и скрипты","GeckoView • XPI / JS","›",()->addonManage());item(c,"◎","Сеть Tor","Не реализована","›",()->notice("Tor","Поддержка .onion пока не реализована."));section(c,"ФАЙЛЫ И ДАННЫЕ");item(c,"↓","Загрузки","Менеджер файлов","›",()->downloadPanel());item(c,"×","Очистить данные","История и данные сайтов","›",()->clearData());section(c,"О ПРИЛОЖЕНИИ");item(c,"↻","Обновление браузера","Локальный дельта-патч .aeb","›",()->updatePanel());item(c,"⚡","AetherBolt Browser","0.8.4 Alpha • GeckoView 161","›",()->notice("AetherBolt","Beyond the Limits. GeckoView • XPI. Tor и перенос пользовательских скриптов ещё не завершены."));}
     private void clearData(){history.clear();closedPages.clear();for(Tab t:tabs)t.preview=null;prefs.edit().remove("workspaceTabs").remove("workspaceActive").apply();writeList("history",history);notice("История очищена","Данные сайтов Gecko не удалены; отдельный механизм ещё не перенесён.");}
 
     private void readList(String key,ArrayList<String> out){try{JSONArray a=new JSONArray(prefs.getString(key,"[]"));for(int i=0;i<a.length();i++)out.add(a.getString(i));}catch(JSONException ignored){}}
