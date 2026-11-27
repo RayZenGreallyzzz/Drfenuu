@@ -16,27 +16,66 @@ public final class ScriptImport {
         public final Kind kind;
         public final List<Candidate> scripts;
         public final String detail,manifestText,manifestPath;
-        public final int manifestCount;
+        public final int manifestCount,crxVersion;
         public final List<String> packages;
         Result(Kind k,List<Candidate> s,String d){this(k,s,d,"","",0);}
-        Result(Kind k,List<Candidate> s,String d,String manifestText,String manifestPath,int manifestCount){kind=k;scripts=Collections.unmodifiableList(s);detail=d;this.manifestText=manifestText;this.manifestPath=manifestPath;this.manifestCount=manifestCount;this.packages=Collections.emptyList();}
-        Result(List<String> packages){kind=Kind.PACKAGE_ARCHIVE;scripts=Collections.emptyList();detail="ZIP с готовыми XPI: выберите пакет; подпись проверит GeckoView.";manifestText="";manifestPath="";manifestCount=0;this.packages=Collections.unmodifiableList(new ArrayList<>(packages));}
+        Result(Kind k,List<Candidate> s,String d,String manifestText,String manifestPath,int manifestCount){this(k,s,d,manifestText,manifestPath,manifestCount,0);}
+        Result(Kind k,List<Candidate> s,String d,String manifestText,String manifestPath,int manifestCount,int crxVersion){kind=k;scripts=Collections.unmodifiableList(s);detail=d;this.manifestText=manifestText;this.manifestPath=manifestPath;this.manifestCount=manifestCount;this.crxVersion=crxVersion;this.packages=Collections.emptyList();}
+        Result(List<String> packages){kind=Kind.PACKAGE_ARCHIVE;scripts=Collections.emptyList();detail="ZIP с готовыми XPI: выберите пакет; подпись проверит GeckoView.";manifestText="";manifestPath="";manifestCount=0;crxVersion=0;this.packages=Collections.unmodifiableList(new ArrayList<>(packages));}
     }
     private static Result only(Kind k,String d){return new Result(k,Collections.emptyList(),d);}
-    private static String decode(byte[] data)throws IOException{
+    static String decode(byte[] data)throws IOException{
         try{String s=StandardCharsets.UTF_8.newDecoder().onMalformedInput(CodingErrorAction.REPORT).onUnmappableCharacter(CodingErrorAction.REPORT).decode(ByteBuffer.wrap(data)).toString();
             if(s.indexOf('\0')>=0)throw new IOException("Нужен текст UTF-8");
             return s.startsWith("\ufeff")?s.substring(1):s;
         }catch(CharacterCodingException e){throw new IOException("Нужен текст UTF-8");}
     }
+    /** Leave the stream at the ZIP payload. The CRX signature is not used by Gecko. */
+    static int seekZipPayload(BufferedInputStream raw)throws IOException{
+        raw.mark(4);
+        int a=raw.read(),b=raw.read(),c=raw.read(),d=raw.read();
+        raw.reset();
+        if(a!='C'||b!='r'||c!='2'||d!='4')return 0;
+        readLittleEndian(raw);
+        long version=readLittleEndian(raw);
+        if(version!=2&&version!=3)throw new IOException("Неподдерживаемая версия CRX: "+version);
+        long header=readLittleEndian(raw);
+        if(header==0)throw new IOException("Пустой заголовок CRX");
+        if(version==2){
+            long signature=readLittleEndian(raw);
+            if(signature==0)throw new IOException("Пустая подпись CRX2");
+            header+=signature;
+        }
+        if(header>1024*1024)throw new IOException("Заголовок CRX больше 1 МБ");
+        byte[] buffer=new byte[8192];
+        while(header>0){
+            int n=raw.read(buffer,0,(int)Math.min(header,buffer.length));
+            if(n<0)throw new IOException("Неполный заголовок CRX");
+            header-=n;
+        }
+        raw.mark(4);
+        if(readLittleEndian(raw)!=0x04034b50L)throw new IOException("ZIP внутри CRX не найден");
+        raw.reset();
+        return (int)version;
+    }
+    private static long readLittleEndian(InputStream input)throws IOException{
+        long value=0;
+        for(int shift=0;shift<32;shift+=8){
+            int b=input.read();
+            if(b<0)throw new IOException("Неполный заголовок CRX");
+            value|=(long)b<<shift;
+        }
+        return value;
+    }
     public static Result read(InputStream input,String name)throws IOException{
         if(input==null)throw new IOException("Нет данных");
         String lower=name.toLowerCase(Locale.ROOT);
         try(BufferedInputStream raw=new BufferedInputStream(input)){
-            if(lower.endsWith(".crx"))return only(Kind.EXTENSION,"CRX — пакет Chromium, не XPI Firefox.");
+            int crxVersion=seekZipPayload(raw);
+            if(crxVersion==0&&lower.endsWith(".crx"))throw new IOException("У файла .crx отсутствует заголовок Chromium");
             raw.mark(4);int a=raw.read(),b=raw.read();raw.reset();
             if(a!='P'||b!='K'){
-                if(!lower.endsWith(".js")&&!lower.endsWith(".user.js"))return only(Kind.UNKNOWN,"Выберите JS, USER.JS, ZIP или XPI.");
+                if(!lower.endsWith(".js")&&!lower.endsWith(".user.js"))return only(Kind.UNKNOWN,"Выберите JS, USER.JS, CRX, ZIP или XPI.");
                 ByteArrayOutputStream out=new ByteArrayOutputStream();byte[] buf=new byte[4096];int n;
                 while((n=raw.read(buf))!=-1){if(out.size()+n>ScriptRules.LIMIT)throw new IOException("JS больше 256 КБ");out.write(buf,0,n);}
                 return new Result(Kind.SCRIPTS,Collections.singletonList(new Candidate(name,decode(out.toByteArray()))),"JavaScript");
@@ -49,10 +88,9 @@ public final class ScriptImport {
                     if(++entries>512)throw new IOException("ZIP: не более 512 файлов");
                     String path=e.getName().replace('\\','/'),p=path.toLowerCase(Locale.ROOT);
                     if(path.length()>1024)throw new IOException("Слишком длинное имя в ZIP");
-                    if(e.isDirectory())continue;
-                    boolean ignored=p.startsWith("__macosx/")||p.contains("/__macosx/")||p.startsWith("node_modules/")||p.contains("/node_modules/");
+                    boolean ignored=e.isDirectory()||p.startsWith("__macosx/")||p.contains("/__macosx/")||p.startsWith("node_modules/")||p.contains("/node_modules/");
                     String leaf=p.substring(p.lastIndexOf('/')+1);
-                    if(!ignored&&leaf.endsWith(".xpi")&&safeEntry(e.getName())){if(packages.size()>=16||packages.contains(e.getName()))throw new IOException("Слишком много XPI или повтор имени");packages.add(e.getName());}
+                    if(crxVersion==0&&!ignored&&leaf.endsWith(".xpi")&&safeEntry(e.getName())){if(packages.size()>=16||packages.contains(e.getName()))throw new IOException("Слишком много XPI или повтор имени");packages.add(e.getName());}
                     if(!ignored){
                         manifest|=leaf.equals("manifest.json");rootManifest|=p.equals("manifest.json");
                         signature|=p.equals("meta-inf/mozilla.rsa");
@@ -61,7 +99,7 @@ public final class ScriptImport {
                         python|=leaf.endsWith(".py");modules|=leaf.endsWith(".mjs");
                     }
                     boolean manifestFile=!ignored&&leaf.equals("manifest.json");if(manifestFile)manifestCount++;
-                    boolean js=!ignored&&leaf.endsWith(".js")&&!leaf.startsWith("._");
+                    boolean js=crxVersion==0&&!ignored&&leaf.endsWith(".js")&&!leaf.startsWith("._");
                     ByteArrayOutputStream out=(js||manifestFile)?new ByteArrayOutputStream():null;int n;
                     while((n=zip.read(buf))!=-1){
                         total+=n;if(total>32L*1024*1024)throw new IOException("ZIP: лимит распаковки 32 МБ");
@@ -72,8 +110,12 @@ public final class ScriptImport {
                 }
             }
             // Never treat extension background/content scripts or Node project files as user scripts.
+            if(crxVersion!=0){
+                if(!rootManifest)throw new IOException("В корне CRX нужен manifest.json");
+                return new Result(Kind.EXTENSION,Collections.emptyList(),"CRX"+crxVersion+" Chromium • подготовка исходников для Gecko",manifestText,manifestPath,manifestCount,crxVersion);
+            }
             if(rootManifest&&signature)return new Result(Kind.SIGNED_PACKAGE,Collections.emptyList(),"Пакет Firefox; подпись и совместимость проверит GeckoView.",manifestText,manifestPath,manifestCount);
-            if(manifest)return new Result(Kind.EXTENSION,Collections.emptyList(),"WebExtension: нужен совместимый подписанный XPI Firefox. ZIP исходников и CRX Chromium не устанавливаются напрямую.",manifestText,manifestPath,manifestCount);
+            if(manifest)return new Result(Kind.EXTENSION,Collections.emptyList(),"ZIP с исходниками WebExtension • подготовка пакета для Gecko",manifestText,manifestPath,manifestCount);
             if(!packages.isEmpty())return new Result(packages);
             if(packageJson||typescript||python||modules)return only(Kind.PROJECT,"Исходный проект ("+(typescript?"TypeScript / сборка":packageJson?"Node.js / Electron":python?"Python":"ES modules")+"). Нужна соответствующая среда или готовое расширение.");
             if(scripts.isEmpty())return only(Kind.UNKNOWN,oversize?"В ZIP только JS больше 256 КБ":"В архиве нет самостоятельных JS");

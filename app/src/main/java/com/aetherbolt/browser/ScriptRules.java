@@ -39,6 +39,9 @@ public final class ScriptRules {
         }catch(Exception e){return false;}
     }
     public static boolean permits(String code,String url){if(origin(url).isEmpty())return false;Matcher m=Pattern.compile("(?m)^\\s*//\\s*@(match|include|exclude|exclude-match)\\s+([^\\r\\n]+)").matcher(code);boolean positive=false,allowed=false;while(m.find()){String type=m.group(1),pattern=m.group(2).trim();boolean hit=type.endsWith("match")?matchPattern(pattern,url):glob(pattern,url);if(type.startsWith("exclude")){if(hit)return false;}else{positive=true;allowed|=hit;}}return !positive||allowed;}
+    public static boolean permitsAt(String site,String code,String url){
+        return !site.isEmpty()&&site.equals(origin(url))&&permits(code,url);
+    }
     public static String validate(String code){
         if(code.trim().isEmpty())return "Пустой скрипт";
         if(code.getBytes(java.nio.charset.StandardCharsets.UTF_8).length>LIMIT)return "Лимит 256 КБ";
