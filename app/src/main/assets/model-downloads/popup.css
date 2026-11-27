@@ -1,0 +1,9 @@
+:root{color-scheme:dark;font:16px system-ui;background:#0b1020;color:#edf2ff}
+main{max-width:36rem;margin:auto;padding:1rem}
+h1{font-size:1.4rem;color:#53ddfb}
+button{min-height:44px;padding:.5rem .75rem;border:1px solid #767bab;border-radius:10px;background:#232d50;color:inherit;font:inherit}
+button:disabled{opacity:.55}
+ul{list-style:none;padding:0}
+li{display:flex;align-items:center;justify-content:space-between;gap:.75rem;padding:.5rem 0;border-top:1px solid #353c62}
+li span{overflow-wrap:anywhere}
+#error{color:#ff98a7}

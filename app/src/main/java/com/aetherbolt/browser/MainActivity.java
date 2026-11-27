@@ -280,7 +280,7 @@ public class MainActivity extends Activity {
         String[] names={"Google","DuckDuckGo","Bing","Brave Search","Qwant","Яндекс","Ahmia","Добавить"};String[] icons={"G","D","b","B","Q","Я","◎","+"};int[] colors={0xff79aaff,0xffff9c50,CYAN,0xffff855d,PURPLE,0xffff7d8a,0xffc69cff,TEXT};Runnable[] actions=new Runnable[8];for(int i=0;i<6;i++){final int n=i;actions[i]=()->setEngine(Router.ENGINES[n][0],Router.ENGINES[n][1]);}actions[6]=()->setEngine(Router.ENGINES[10][0],Router.ENGINES[10][1]);actions[7]=()->customEngine();
         int cols=getResources().getConfiguration().screenWidthDp>=720?8:4;grid(box,names,icons,colors,actions,cols);
         grid(box,new String[]{"Дополнения","Загрузки","Закладки","История","Настройки","Вкладки"},new String[]{"✧","↓","☆","◷","⚙","▣"},new int[]{PURPLE,CYAN},new Runnable[]{()->quickAddons(),()->downloadPanel(),()->listDialog("Закладки",bookmarks,"bookmarks"),()->listDialog("История",history,"history"),()->settings(),()->tabDialog()},getResources().getConfiguration().screenWidthDp>=650?6:3);
-        TextView note=label("GECKO ALPHA 0.9.7.9   •   Tor Engine • эксперимент",11,MUTED);note.setGravity(Gravity.CENTER);add(box,note,-1,28);return sc;
+        TextView note=label("GECKO ALPHA 0.9.8.1   •   Tor Engine • эксперимент",11,MUTED);note.setGravity(Gravity.CENTER);add(box,note,-1,28);return sc;
     }
 
     private android.graphics.drawable.Drawable ripple(int color,int radius,int stroke){return new android.graphics.drawable.RippleDrawable(android.content.res.ColorStateList.valueOf(0x337f8cff),shape(color,radius,stroke),null);}
@@ -369,7 +369,7 @@ public class MainActivity extends Activity {
     private boolean visibleAddon(WebExtension e){return !e.id.equals(COMPAT_ID)&&!e.id.equals("scripts@aetherbolt.local")&&!e.id.equals(DevSuiteFeature.BRIDGE_ID)&&!e.id.equals(DevSuiteFeature.TOOLS_ID);}
     private void quickAddons(){
         LinearLayout c=panel("Расширения","Импорт • запуск • управление",true);
-        item(c,"+","Открыть файл расширения",addonInstallBusy||packageImportBusy?"Установка выполняется…":"XPI / ZIP / CRX / USER.JS / JS","›",this::importAddonPicker);
+        item(c,"+","Установить из файла",addonInstallBusy||packageImportBusy?"Установка выполняется…":"XPI / ZIP / CRX / USER.JS / JS","›",this::importAddonPicker);
         section(c,"УСТАНОВЛЕННЫЕ");
         LinearLayout installed=column();c.addView(installed);
         extensions.list().then(list->{runOnUiThread(()->{if(isDestroyed()||!installed.isAttachedToWindow())return;installed.removeAllViews();int n=0;
@@ -378,12 +378,12 @@ public class MainActivity extends Activity {
             }
             if(n==0)item(installed,"✧","Нет расширений","Установи из магазина","",()->addonStore("",1));
         });return null;},err->{runOnUiThread(()->toast("Ошибка списка"));return null;});
-        section(c,"СОВМЕСТИМОСТЬ");item(c,"◎","Extension Compatibility","CRX / ZIP / XPI и тест MV3","›",this::compatibilityCenter);section(c,"ПОЛЬЗОВАТЕЛЬСКИЕ СКРИПТЫ");item(c,"✧","Violentmonkey","Установка и запуск официального менеджера","›",this::violentmonkeyPanel);item(c,"JS","Script Manager","Импорт, список и ручной запуск","›",this::scriptPanel);section(c,"ДОБАВИТЬ");item(c,"+","Магазин Mozilla","Поиск и установка","›",()->addonStore("",1));
+        section(c,"СОВМЕСТИМОСТЬ");item(c,"◎","Диагностика расширений","Отчёт о файле и тест GeckoView","›",this::compatibilityCenter);section(c,"ПОЛЬЗОВАТЕЛЬСКИЕ СКРИПТЫ");item(c,"✧","Violentmonkey","Установка и запуск официального менеджера","›",this::violentmonkeyPanel);item(c,"JS","Script Manager","Импорт, список и ручной запуск","›",this::scriptPanel);section(c,"ДОБАВИТЬ");item(c,"+","Магазин Mozilla","Поиск и установка","›",()->addonStore("",1));
         item(c,"⚙","Управление расширениями","XPI из файла / по ссылке • настройки","›",()->addonManage());
     }
-    private void addonManage(){LinearLayout c=panel("Управление расширениями","Единый импорт • GeckoView",false);item(c,"◎","Extension Compatibility","Отчёт манифеста • самопроверка движка","›",this::compatibilityCenter);item(c,"✧","Violentmonkey","Менеджер скриптов Firefox","›",this::violentmonkeyPanel);
-        item(c,"+","Открыть файл расширения","XPI / ZIP / CRX / USER.JS / JS","›",this::importAddonPicker);item(c,"+","По HTTPS-ссылке","","›",()->extensionUrl());item(c,"↗","Сайт Mozilla Add-ons","","›",()->openVpnSite("https://addons.mozilla.org/android/"));item(c,"P","Proton VPN","Открыть или установить","›",()->openOrInstallProton());item(c,"⚙","Все расширения","Включить, отключить, удалить","›",()->extensionList());item(c,"JS","Скрипты и 3D модули","","›",()->plugins());}
-    private void plugins(){LinearLayout c=panel("Дополнения","GeckoView • WebExtensions",false);section(c,"ЛИЧНЫЕ МОДУЛИ");item(c,"JS","Менеджер скриптов",scripts.size()+" сохранено • ZIP / JS","›",()->scriptPanel());item(c,"▣","3D Link Finder","Поиск прямых ссылок на модели","›",()->installFinder());item(c,"JS","Mixamo / Meshy / 3D Downloader","Хранение локальных исходников","›",()->localArchives());section(c,"РАСШИРЕНИЯ");item(c,"✧","Магазин Mozilla","Поиск и установка расширений для Android","›",()->addonStore("",1));item(c,"P","Установить Proton VPN","Официальное расширение Mozilla • XPI","›",()->installProtonAddon());item(c,"+","Установить XPI по ссылке","Подписанное расширение Mozilla","›",()->extensionUrl());item(c,"+","Открыть файл расширения","XPI / ZIP / CRX / USER.JS / JS","›",this::importAddonPicker);item(c,"✧","Установленные расширения","Включение, отключение, удаление","›",()->extensionList());item(c,"↗","Сайт Mozilla Add-ons","Открыть официальный магазин в новой вкладке","›",()->openVpnSite("https://addons.mozilla.org/android/"));}
+    private void addonManage(){LinearLayout c=panel("Управление расширениями","Единый импорт • GeckoView",false);item(c,"◎","Диагностика расширений","Отчёт о файле и тест GeckoView","›",this::compatibilityCenter);item(c,"✧","Violentmonkey","Менеджер скриптов Firefox","›",this::violentmonkeyPanel);
+        item(c,"+","Установить из файла","XPI / ZIP / CRX / USER.JS / JS","›",this::importAddonPicker);item(c,"+","По HTTPS-ссылке","","›",()->extensionUrl());item(c,"↗","Сайт Mozilla Add-ons","","›",()->openVpnSite("https://addons.mozilla.org/android/"));item(c,"P","Proton VPN","Открыть или установить","›",()->openOrInstallProton());item(c,"⚙","Все расширения","Включить, отключить, удалить","›",()->extensionList());item(c,"JS","Скрипты и 3D модули","","›",()->plugins());}
+    private void plugins(){LinearLayout c=panel("Дополнения","GeckoView • WebExtensions",false);section(c,"ЛИЧНЫЕ МОДУЛИ");item(c,"JS","Менеджер скриптов",scripts.size()+" сохранено • ZIP / JS","›",()->scriptPanel());item(c,"▣","3D Link Finder","Поиск прямых ссылок на модели","›",()->installFinder());item(c,"JS","Mixamo / Meshy / 3D Downloader","Хранение локальных исходников","›",()->localArchives());section(c,"РАСШИРЕНИЯ");item(c,"✧","Магазин Mozilla","Поиск и установка расширений для Android","›",()->addonStore("",1));item(c,"P","Установить Proton VPN","Официальное расширение Mozilla • XPI","›",()->installProtonAddon());item(c,"+","Установить XPI по ссылке","Подписанное расширение Mozilla","›",()->extensionUrl());item(c,"+","Установить из файла","XPI / ZIP / CRX / USER.JS / JS","›",this::importAddonPicker);item(c,"✧","Установленные расширения","Включение, отключение, удаление","›",()->extensionList());item(c,"↗","Сайт Mozilla Add-ons","Открыть официальный магазин в новой вкладке","›",()->openVpnSite("https://addons.mozilla.org/android/"));}
 
     private void reader(){notice("Reader","Перенос Reader ещё не завершён.");}
 
@@ -607,6 +607,9 @@ public class MainActivity extends Activity {
     private void downloadEntry(FileTransfers.Entry e){
         LinearLayout c=panel(e.name,"Управление файлом",true);
         item(c,"▤","Просмотр в Document Center","PDF • текст • HEX • архивы","›",()->startActivity(new Intent(this,DocumentCenterActivity.class).setDataAndType(transfers.uri(e),e.mime).putExtra("title",e.name).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)));
+        if(e.name.toLowerCase(Locale.ROOT).matches(".*\\.(xpi|zip|crx|js)$")){
+            item(c,"+","Установить расширение или скрипт","","›",()->openAddonFile(transfers.uri(e),e.name));
+        }
         if(MediaCenterActivity.isMedia(e.name,e.mime))item(c,"▶","Воспроизвести в AetherBolt","Встроенный проигрыватель • весь экран","›",()->transfers.play(e));
         item(c,"↗","Открыть","Выбрать приложение","›",()->transfers.open(e));
         item(c,"↗","Поделиться","Отправить файл","›",()->transfers.share(e));
@@ -783,7 +786,7 @@ public class MainActivity extends Activity {
     private boolean addonExportBusy;
     private java.io.File pendingAddonExport;
     private void compatibilityCenter(){
-        LinearLayout c=panel("Extension Compatibility","GeckoView",false);
+        LinearLayout c=panel("Диагностика расширений","GeckoView",false);
         item(c,"◎","Проверить CRX / ZIP / XPI / JS","Манифест, разрешения и подготовка исходников для Gecko","›",()->{try{pickLocal(984);}catch(Exception e){toast("Не удалось открыть файл");}});
         item(c,"✓","Самопроверка MV3","Локальное тестовое расширение • Worker, WASM, Blob, storage, runtime","›",this::openCompatibilityLab);
         item(c,"JS","Script Manager","Статус подключения и ручной запуск","›",this::scriptPanel);
@@ -964,24 +967,105 @@ public class MainActivity extends Activity {
             runOnUiThread(()->{packageImportBusy=false;if(isDestroyed()||isFinishing()){ready.delete();return;}installStagedXpi(ready);});
         }catch(Exception e){if(out!=null)out.delete();runOnUiThread(()->{packageImportBusy=false;if(!isDestroyed())notice("Ошибка импорта XPI",String.valueOf(e.getMessage()));});}},"aether-addon-import").start();
     }
-    private void reviewImport(Uri uri,String name,ScriptImport.Result loaded){
+    private static final String MODEL_DOWNLOADER_ID="model-downloads@aetherbolt.local";
+    private static final String MESHY_FIREFOX_XPI="https://addons.mozilla.org/firefox/downloads/file/5249026/meshy_downloader-1.4.2.xpi";
+
+    private void openAddonFile(Uri uri,String filename){
+        if(addonImportUnavailable())return;
+        packageImportBusy=true;
+        new Thread(()->{
+            try{
+                String name=filename==null?selectedFileName(uri):filename;
+                if(name.toLowerCase(Locale.ROOT).endsWith(".xpi")){
+                    runOnUiThread(()->{packageImportBusy=false;if(!isDestroyed()&&!isFinishing())importLocal(uri,703,name);});
+                    return;
+                }
+                ScriptImport.Result archive=ScriptImport.read(getContentResolver().openInputStream(uri),name);
+                KnownAddonImport.Package known=KnownAddonImport.Package.OTHER;
+                if(archive.kind==ScriptImport.Kind.EXTENSION||archive.kind==ScriptImport.Kind.PROJECT){
+                    known=KnownAddonImport.identify(getContentResolver().openInputStream(uri));
+                }
+                KnownAddonImport.Package match=known;
+                runOnUiThread(()->{packageImportBusy=false;reviewImport(uri,name,archive,match);});
+            }catch(Exception ex){
+                runOnUiThread(()->{
+                    packageImportBusy=false;
+                    if(!isDestroyed()&&!isFinishing())notice("Ошибка установки",boundedText(ex.getMessage()));
+                });
+            }
+        },"aether-addon-inspect").start();
+    }
+
+    private void reviewImport(Uri uri,String name,ScriptImport.Result loaded,KnownAddonImport.Package known){
         if(isDestroyed()||isFinishing())return;
-        if(loaded.kind==ScriptImport.Kind.SIGNED_PACKAGE){importLocal(uri,703);return;}
-        if(loaded.kind==ScriptImport.Kind.PACKAGE_ARCHIVE){LinearLayout c=panel("Установка из ZIP",name,false);for(String entry:loaded.packages)item(c,"+","Установить "+entry,"Проверка подписи и разрешений GeckoView","›",()->installPackageFromZip(uri,entry));return;}
-        if(loaded.kind==ScriptImport.Kind.EXTENSION){manifestReport(loaded,name,uri);return;}
-        if(loaded.kind==ScriptImport.Kind.SCRIPTS){
-            if(loaded.scripts.size()==1){ScriptImport.Candidate x=loaded.scripts.get(0);reviewScript(x.code,x.name.substring(x.name.lastIndexOf('/')+1));return;}
-            LinearLayout c=panel("Выбор скрипта",loaded.detail,false);
-            for(ScriptImport.Candidate x:loaded.scripts)item(c,"JS",x.name,x.code.length()+" символов","›",()->reviewScript(x.code,x.name.substring(x.name.lastIndexOf('/')+1)));
+        if(known==KnownAddonImport.Package.MODEL_DOWNLOADER){
+            new AlertDialog.Builder(this).setTitle("Установить 3D Downloader?")
+                .setMessage("Версия AetherBolt ищет ссылки на 3D-файлы в выбранной вкладке. Для поиска нужен доступ к сетевым запросам сайта.")
+                .setNegativeButton("Отмена",null).setPositiveButton("Установить",(d,w)->installModelDownloader()).show();
             return;
         }
-        LinearLayout c=panel("Тип файла",name,false);
-        item(c,"◎",loaded.kind==ScriptImport.Kind.PROJECT?"Исходный проект":loaded.kind==ScriptImport.Kind.UNKNOWN?"Неисполняемый файл":"Расширение браузера",loaded.detail,"",()->{});
-        if(loaded.kind==ScriptImport.Kind.PROJECT){
-            item(c,"✧","Магазин Mozilla","Найти совместимую готовую версию","›",()->addonStore("",1));
-            item(c,"+","Открыть подписанный XPI","Установка расширения","›",()->pickLocal(703));
+        if(known==KnownAddonImport.Package.MESHY_FIREFOX){
+            startAddonInstall(MESHY_FIREFOX_XPI,null);
+            return;
         }
-        item(c,"▤","Сохранить исходник","Только хранение, без выполнения","›",()->importLocal(uri,704));
+        if(loaded.kind==ScriptImport.Kind.SIGNED_PACKAGE){importLocal(uri,703,name);return;}
+        if(loaded.kind==ScriptImport.Kind.PACKAGE_ARCHIVE){
+            if(loaded.packages.size()==1){installPackageFromZip(uri,loaded.packages.get(0));return;}
+            LinearLayout c=panel("Установка из ZIP",name,false);
+            for(String entry:loaded.packages)item(c,"+","Установить "+entry,"","›",()->installPackageFromZip(uri,entry));
+            return;
+        }
+        if(loaded.kind==ScriptImport.Kind.SCRIPTS){
+            if(loaded.scripts.size()==1){
+                ScriptImport.Candidate script=loaded.scripts.get(0);
+                if(KnownAddonImport.isMixamoScript(script.code))confirmMixamoImport(script.code);
+                else reviewScript(script.code,script.name.substring(script.name.lastIndexOf('/')+1));
+                return;
+            }
+            LinearLayout c=panel("Выбор скрипта",loaded.detail,false);
+            for(ScriptImport.Candidate script:loaded.scripts)item(c,"JS",script.name,"","›",()->reviewScript(script.code,script.name.substring(script.name.lastIndexOf('/')+1)));
+            return;
+        }
+        String message=loaded.kind==ScriptImport.Kind.EXTENSION?"Для этого расширения нужен подписанный XPI Firefox.":loaded.detail;
+        AlertDialog.Builder problem=new AlertDialog.Builder(this).setTitle("Установка недоступна")
+            .setMessage(message).setPositiveButton("Закрыть",null).setNegativeButton("Сохранить файл",(d,w)->importLocal(uri,704,name));
+        if(loaded.kind==ScriptImport.Kind.EXTENSION||loaded.kind==ScriptImport.Kind.PROJECT){
+            problem.setNeutralButton("Диагностика",(d,w)->manifestReport(loaded,name,uri));
+        }
+        problem.show();
+    }
+
+    private void confirmMixamoImport(String code){
+        String name="Mixamo — скачивание анимаций",site="https://www.mixamo.com";
+        for(UserScript script:scripts){
+            if(site.equals(script.site)&&code.equals(script.code)){scriptDetails(script);return;}
+        }
+        if(!ScriptRules.validate(code).isEmpty()){reviewScript(code,name);return;}
+        if(scripts.size()>=40){toast("Максимум 40 скриптов");return;}
+        new AlertDialog.Builder(this).setTitle("Установить скрипт Mixamo?")
+            .setMessage("Доступ только к www.mixamo.com. Скрипт запускается вручную из менеджера.")
+            .setNegativeButton("Отмена",null).setPositiveButton("Установить",(d,w)->{
+                if(scripts.size()>=40){toast("Максимум 40 скриптов");return;}
+                UserScript script=new UserScript(UUID.randomUUID().toString(),name,site,code,true);
+                scripts.add(script);saveScripts();toast("Скрипт установлен");scriptDetails(script);
+            }).show();
+    }
+
+    private void installModelDownloader(){
+        if(addonImportUnavailable())return;
+        addonInstallBusy=true;
+        try{
+            extensions.ensureBuiltIn("resource://android/assets/model-downloads/",MODEL_DOWNLOADER_ID).then(extension->{
+                runOnUiThread(()->{
+                    addonInstallBusy=false;
+                    if(isDestroyed()||isFinishing())return;
+                    registerAddon(extension);
+                    if(extension.metaData!=null&&extension.metaData.enabled)pin(extension);
+                    toast("3D Downloader установлен");dismissPanel();quickAddons();
+                });
+                return null;
+            },error->{runOnUiThread(()->{addonInstallBusy=false;showAddonInstallError(error);});return null;});
+        }catch(RuntimeException error){addonInstallBusy=false;showAddonInstallError(error);}
     }
 
     private void violentmonkeyPanel(){
@@ -1019,12 +1103,12 @@ public class MainActivity extends Activity {
             chromeHandler.postDelayed(()->{if(token.equals(t.scriptToken)){t.scriptToken=null;t.scriptStatus="Тест не получил ответа";if(tabs.contains(t)&&current()==t)toast(t.scriptStatus);}},10000);
         }).show();
     }
-    private void scriptPanel(){LinearLayout c=panel("Пользовательские скрипты","AetherBolt Script Engine • JavaScript",false);item(c,"◎","Канал текущей вкладки",scriptBridge==null?"Модуль не загружен":tabs.isEmpty()||current().scriptPort==null?"Ожидается подключение веб-страницы":"Подключён","›",this::compatibilityCenter);section(c,"ПРОВЕРКА");item(c,"▶","Тест запуска JavaScript","Минимальное изменение DOM • явное подтверждение","›",this::scriptSelfTest);item(c,"✧","Violentmonkey Pro","Подписанный менеджер Firefox • GM API","›",this::violentmonkeyPanel);section(c,"ИМПОРТ");item(c,"+","Открыть файл расширения","XPI / ZIP / CRX / USER.JS / JS","›",this::importAddonPicker);item(c,"↗","Загрузить по HTTPS","Без cookies и автоматических обновлений","›",()->scriptUrl());item(c,"JS","Создать / вставить код","Встроенный редактор","›",()->editScript(null,"",""));item(c,"✧","Менеджеры userscript","Tampermonkey / Violentmonkey в Mozilla; совместимость зависит от GeckoView","›",()->{LinearLayout p=panel("Менеджеры userscript","Дополнительные GM API",false);item(p,"✧","Tampermonkey","Поиск в магазине Mozilla","›",()->addonStore("Tampermonkey",1));item(p,"✧","Violentmonkey","Поиск в магазине Mozilla","›",()->addonStore("Violentmonkey",1));});section(c,"УСТАНОВЛЕННЫЕ • "+scripts.size());if(scripts.isEmpty())item(c,"▤","Пока нет скриптов","Импортируй доверенный JavaScript","",()->{});for(UserScript u:new ArrayList<>(scripts))item(c,"JS",u.name,u.site+" • "+(u.enabled?"Включён":"Выключен")+(u.enabled&&!tabs.isEmpty()&&scriptReady(current(),u)?" • готов":""),"›",()->scriptDetails(u));section(c,"БЕЗОПАСНОСТЬ");item(c,"◈","Разрешения","Скрипты имеют доступ к содержимому выбранного сайта","›",()->notice("Важно","Запускай только код из доверенных источников. Скрипт может читать и изменять страницу, включая введённые данные. Нет GM API. Скрипты выключены по умолчанию, ограничены одним точным origin и запускаются вручную. Отключение не останавливает уже запущенный код: перезагрузи страницу."));}
+    private void scriptPanel(){LinearLayout c=panel("Пользовательские скрипты","AetherBolt Script Engine • JavaScript",false);item(c,"◎","Канал текущей вкладки",scriptBridge==null?"Модуль не загружен":tabs.isEmpty()||current().scriptPort==null?"Ожидается подключение веб-страницы":"Подключён","›",this::compatibilityCenter);section(c,"ПРОВЕРКА");item(c,"▶","Тест запуска JavaScript","Минимальное изменение DOM • явное подтверждение","›",this::scriptSelfTest);item(c,"✧","Violentmonkey Pro","Подписанный менеджер Firefox • GM API","›",this::violentmonkeyPanel);section(c,"ИМПОРТ");item(c,"+","Установить из файла","XPI / ZIP / CRX / USER.JS / JS","›",this::importAddonPicker);item(c,"↗","Загрузить по HTTPS","Без cookies и автоматических обновлений","›",()->scriptUrl());item(c,"JS","Создать / вставить код","Встроенный редактор","›",()->editScript(null,"",""));item(c,"✧","Менеджеры userscript","Tampermonkey / Violentmonkey в Mozilla; совместимость зависит от GeckoView","›",()->{LinearLayout p=panel("Менеджеры userscript","Дополнительные GM API",false);item(p,"✧","Tampermonkey","Поиск в магазине Mozilla","›",()->addonStore("Tampermonkey",1));item(p,"✧","Violentmonkey","Поиск в магазине Mozilla","›",()->addonStore("Violentmonkey",1));});section(c,"УСТАНОВЛЕННЫЕ • "+scripts.size());if(scripts.isEmpty())item(c,"▤","Пока нет скриптов","Импортируй доверенный JavaScript","",()->{});for(UserScript u:new ArrayList<>(scripts))item(c,"JS",u.name,u.site+" • "+(u.enabled?"Включён":"Выключен")+(u.enabled&&!tabs.isEmpty()&&scriptReady(current(),u)?" • готов":""),"›",()->scriptDetails(u));section(c,"БЕЗОПАСНОСТЬ");item(c,"◈","Разрешения","Скрипты имеют доступ к содержимому выбранного сайта","›",()->notice("Важно","Запускай только код из доверенных источников. Скрипт может читать и изменять страницу, включая введённые данные. Нет GM API. Скрипты выключены по умолчанию, ограничены одним точным origin и запускаются вручную. Отключение не останавливает уже запущенный код: перезагрузи страницу."));}
     private void scriptDetails(UserScript u){LinearLayout c=panel(u.name,u.site,false);if(u.enabled)item(c,"▶","Запустить на текущей странице",!tabs.isEmpty()&&scriptReady(current(),u)?"Мост готов":"Нужен разрешённый сайт и готовый мост","›",()->runLocalScript(u));if(!tabs.isEmpty()&&!current().scriptStatus.isEmpty())item(c,"◎","Последний запуск вкладки",current().scriptStatus,"",()->{});item(c,"✓",u.enabled?"Отключить":"Включить","Включённый скрипт запускается из Script Manager",u.enabled?"●":"○",()->{if(u.enabled){u.enabled=false;saveScripts();scriptDetails(u);}else{LinearLayout a=panel("Разрешить выполнение?",u.site,true);item(a,"◈","Разрешить скрипт","Код сможет читать и менять страницу","›",()->{u.enabled=true;saveScripts();scriptDetails(u);});item(a,"×","Отмена","","",()->scriptDetails(u));}});item(c,"JS","Редактировать код и сайт","","›",()->editScript(u,u.name,u.code));item(c,"×","Удалить скрипт","","›",()->{LinearLayout a=panel("Удалить скрипт?",u.name,true);item(a,"×","Удалить","","",()->{scripts.remove(u);saveScripts();scriptPanel();});item(a,"‹","Отмена","","",()->scriptDetails(u));});}
     private void editScript(UserScript old,String suggested,String initial){LinearLayout c=panel("Редактор скрипта","Скрипт сохраняется выключенным",false);EditText name=field("Название"),site=field("https://example.com"),code=field("JavaScript");name.setText(suggested);if(old!=null)site.setText(old.site);else if(suggested.toLowerCase(Locale.ROOT).contains("mixamo"))site.setText("https://www.mixamo.com");else if(!ScriptRules.origin(ScriptRules.metadata(initial,"match")).isEmpty())site.setText(ScriptRules.origin(ScriptRules.metadata(initial,"match")));else if(!current().home&&current().url!=null)site.setText(ScriptRules.origin(current().url));code.setSingleLine(false);code.setInputType(android.text.InputType.TYPE_CLASS_TEXT|android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE|android.text.InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);code.setGravity(Gravity.TOP|Gravity.START);code.setTypeface(Typeface.MONOSPACE);code.setTextSize(13);code.setText(initial);add(c,name,-1,54);add(c,site,-1,54);add(c,code,-1,260);TextView info=label("Точный адрес сайта (origin). Включите скрипт и нажмите «Запустить» в Script Manager. Обычные @match/include/exclude, изолированный контекст DOM; без GM API, @require и document-start.",12,MUTED);add(c,info,-1,-2);item(c,"✓","Сохранить выключенным","","›",()->{String n=name.getText().toString().trim(),o=ScriptRules.scope(site.getText().toString()),source=code.getText().toString(),err=ScriptRules.validate(source);if(n.isEmpty()){name.setError("Укажи название");return;}if(o.isEmpty()){site.setError("Нужен точный HTTP(S) origin");return;}if(!err.isEmpty()){code.setError(err);toast(err);return;}if(old==null&&scripts.size()>=40){toast("Максимум 40 скриптов");return;}if(old==null)scripts.add(new UserScript(UUID.randomUUID().toString(),n,o,source,false));else{old.name=n;old.site=o;old.code=source;old.enabled=false;}saveScripts();scriptPanel();});}
     private String readScript(java.io.InputStream in)throws java.io.IOException{try(java.io.InputStream input=in;java.io.ByteArrayOutputStream out=new java.io.ByteArrayOutputStream()){if(input==null)throw new java.io.IOException("Нет данных");byte[] buf=new byte[4096];int n;while((n=input.read(buf))!=-1){if(out.size()+n>ScriptRules.LIMIT)throw new java.io.IOException("Лимит 256 КБ");out.write(buf,0,n);}String result=new String(out.toByteArray(),java.nio.charset.StandardCharsets.UTF_8);return result.startsWith("\ufeff")?result.substring(1):result;}}
     private void reviewScript(String code,String fallback){if(isFinishing()||isDestroyed())return;String name=ScriptRules.metadata(code,"name");editScript(null,name.isEmpty()?fallback:name,code);}
-    @Override protected void onActivityResult(int request,int result,Intent data){super.onActivityResult(request,result,data);if(request==ADDON_EXPORT){finishExtensionExport(result,data);return;}if(request==984){if(result==RESULT_OK&&data!=null&&data.getData()!=null){Uri uri=data.getData();new Thread(()->{try{String name=selectedFileName(uri);ScriptImport.Result report=ScriptImport.read(getContentResolver().openInputStream(uri),name);runOnUiThread(()->{if(!isDestroyed())manifestReport(report,name,uri);});}catch(Exception ex){runOnUiThread(()->{if(!isDestroyed())notice("Ошибка диагностики",String.valueOf(ex.getMessage()));});}}).start();}return;}if(passwords!=null&&passwords.onActivityResult(request,result))return;if(request==980){if(result==RESULT_OK){bookmarks.clear();readList("bookmarks",bookmarks);loadOptions();applyProtection();for(Tab t:tabs)applyOptions(t);applyVideoPower();root.setBackgroundColor(themeBg());backupPanel();}return;}if(transfers!=null&&transfers.onActivityResult(request,result,data))return;if(request==706&&result==RESULT_OK){startVpn();return;}if(request==707&&result==RESULT_OK&&data!=null){ArrayList<Uri> uris=new ArrayList<>();if(data.getClipData()!=null){android.content.ClipData clips=data.getClipData();for(int n=0;n<Math.min(clips.getItemCount(),101);n++){Uri u=clips.getItemAt(n).getUri();if(u!=null&&!uris.contains(u))uris.add(u);}}else if(data.getData()!=null)uris.add(data.getData());vpn.importMany(uris,msg->runOnUiThread(()->{if(!isDestroyed()){vpnPanel();toast(msg);}}));return;}if(request==705&&result==RESULT_OK&&data!=null&&data.getData()!=null){applyUpdate(data.getData());return;}if((request==703||request==704)&&result==RESULT_OK&&data!=null&&data.getData()!=null){importLocal(data.getData(),request);return;}if(request!=SCRIPT_PICK||result!=RESULT_OK||data==null||data.getData()==null)return;Uri uri=data.getData();new Thread(()->{try{String name=selectedFileName(uri);if(name.toLowerCase(Locale.ROOT).endsWith(".xpi")){runOnUiThread(()->{if(!isDestroyed())importLocal(uri,703);});return;}ScriptImport.Result loaded=ScriptImport.read(getContentResolver().openInputStream(uri),name);runOnUiThread(()->reviewImport(uri,name,loaded));}catch(Exception e){runOnUiThread(()->{if(!isDestroyed())notice("Ошибка импорта",String.valueOf(e.getMessage()));});}}).start();}
+    @Override protected void onActivityResult(int request,int result,Intent data){super.onActivityResult(request,result,data);if(request==ADDON_EXPORT){finishExtensionExport(result,data);return;}if(request==984){if(result==RESULT_OK&&data!=null&&data.getData()!=null){Uri uri=data.getData();new Thread(()->{try{String name=selectedFileName(uri);ScriptImport.Result report=ScriptImport.read(getContentResolver().openInputStream(uri),name);runOnUiThread(()->{if(!isDestroyed())manifestReport(report,name,uri);});}catch(Exception ex){runOnUiThread(()->{if(!isDestroyed())notice("Ошибка диагностики",String.valueOf(ex.getMessage()));});}}).start();}return;}if(passwords!=null&&passwords.onActivityResult(request,result))return;if(request==980){if(result==RESULT_OK){bookmarks.clear();readList("bookmarks",bookmarks);loadOptions();applyProtection();for(Tab t:tabs)applyOptions(t);applyVideoPower();root.setBackgroundColor(themeBg());backupPanel();}return;}if(transfers!=null&&transfers.onActivityResult(request,result,data))return;if(request==706&&result==RESULT_OK){startVpn();return;}if(request==707&&result==RESULT_OK&&data!=null){ArrayList<Uri> uris=new ArrayList<>();if(data.getClipData()!=null){android.content.ClipData clips=data.getClipData();for(int n=0;n<Math.min(clips.getItemCount(),101);n++){Uri u=clips.getItemAt(n).getUri();if(u!=null&&!uris.contains(u))uris.add(u);}}else if(data.getData()!=null)uris.add(data.getData());vpn.importMany(uris,msg->runOnUiThread(()->{if(!isDestroyed()){vpnPanel();toast(msg);}}));return;}if(request==705&&result==RESULT_OK&&data!=null&&data.getData()!=null){applyUpdate(data.getData());return;}if((request==703||request==704)&&result==RESULT_OK&&data!=null&&data.getData()!=null){importLocal(data.getData(),request);return;}if(request==SCRIPT_PICK&&result==RESULT_OK&&data!=null&&data.getData()!=null)openAddonFile(data.getData(),null);}
     private void scriptUrl(){LinearLayout c=panel("Загрузить скрипт","Только прямая HTTPS-ссылка",false);EditText url=field("https://example.com/script.js");add(c,url,-1,54);item(c,"↓","Загрузить для проверки","Не запускается автоматически","›",()->{String raw=url.getText().toString().trim();if(!raw.startsWith("https://")||ScriptRules.origin(raw).isEmpty()){url.setError("Нужна HTTPS-ссылка");return;}notice("Импорт","Получение скрипта…");new Thread(()->{try{java.net.URL u=new java.net.URL(raw);javax.net.ssl.HttpsURLConnection connection=(javax.net.ssl.HttpsURLConnection)u.openConnection();connection.setInstanceFollowRedirects(false);connection.setConnectTimeout(10000);connection.setReadTimeout(10000);connection.setRequestProperty("Accept","application/javascript, text/javascript, text/plain, */*");try{if(connection.getResponseCode()!=200)throw new java.io.IOException("HTTP "+connection.getResponseCode()+"; перенаправления не поддерживаются");String code=readScript(connection.getInputStream());runOnUiThread(()->reviewScript(code,"Загруженный скрипт"));}finally{connection.disconnect();}}catch(Exception e){runOnUiThread(()->{if(!isDestroyed())notice("Ошибка импорта",String.valueOf(e.getMessage()));});}}).start();});}
 
     private void configure(Tab t){t.web.setImportantForAutofill(View.IMPORTANT_FOR_AUTOFILL_YES);applyOptions(t);t.session.setPromptDelegate(transfers.promptDelegate());
@@ -1274,7 +1358,7 @@ public class MainActivity extends Activity {
         }
     }
     private void showAddonInstallError(Throwable error){if(isDestroyed()||isFinishing())return;Throwable cause=error;while(cause!=null&&!(cause instanceof WebExtension.InstallException)&&cause.getCause()!=cause)cause=cause.getCause();String detail=String.valueOf(error);if(cause instanceof WebExtension.InstallException){int code=((WebExtension.InstallException)cause).code;String hint;switch(code){case WebExtension.InstallException.ErrorCodes.ERROR_INCOMPATIBLE:hint="Расширение несовместимо с Android / GeckoView.";break;case WebExtension.InstallException.ErrorCodes.ERROR_SIGNEDSTATE_REQUIRED:hint="Подпись Mozilla отсутствует или не принята.";break;case WebExtension.InstallException.ErrorCodes.ERROR_CORRUPT_FILE:hint="Движок не принял содержимое XPI.";break;case WebExtension.InstallException.ErrorCodes.ERROR_NETWORK_FAILURE:hint="Ошибка скачивания расширения.";break;case WebExtension.InstallException.ErrorCodes.ERROR_FILE_ACCESS:hint="Ошибка доступа к файлу.";break;case WebExtension.InstallException.ErrorCodes.ERROR_USER_CANCELED:toast("Установка отменена");return;default:hint="GeckoView отклонил установку.";}detail=hint+"\nКод GeckoView: "+code+"\n"+detail;}final String report=detail;new AlertDialog.Builder(this).setTitle("Ошибка установки XPI").setMessage(report).setPositiveButton("OK",null).setNeutralButton("Копировать",(d,w)->{android.content.ClipboardManager clipboard=(android.content.ClipboardManager)getSystemService(CLIPBOARD_SERVICE);clipboard.setPrimaryClip(android.content.ClipData.newPlainText("XPI error",report));}).show();}
-    private void extensionList(){LinearLayout c=panel("Расширения","Менеджер GeckoView",false);item(c,"+","Открыть файл расширения","XPI / ZIP / CRX / USER.JS / JS","›",this::importAddonPicker);extensions.list().then(list->{runOnUiThread(()->{if(isDestroyed()||!c.isAttachedToWindow())return;if(list.isEmpty())section(c,"НЕТ РАСШИРЕНИЙ");for(WebExtension e:list){if(!visibleAddon(e))continue;if(!registeredAddons.containsKey(e.id))registerAddon(e);boolean enabled=e.metaData!=null&&e.metaData.enabled;item(c,"✧",extName(e),enabled?"Включено":"Выключено","›",()->extensionDetail(e));}});return null;},err->{runOnUiThread(()->toast("Ошибка списка: "+err));return null;});}
+    private void extensionList(){LinearLayout c=panel("Расширения","Менеджер GeckoView",false);item(c,"+","Установить из файла","XPI / ZIP / CRX / USER.JS / JS","›",this::importAddonPicker);extensions.list().then(list->{runOnUiThread(()->{if(isDestroyed()||!c.isAttachedToWindow())return;if(list.isEmpty())section(c,"НЕТ РАСШИРЕНИЙ");for(WebExtension e:list){if(!visibleAddon(e))continue;if(!registeredAddons.containsKey(e.id))registerAddon(e);boolean enabled=e.metaData!=null&&e.metaData.enabled;item(c,"✧",extName(e),enabled?"Включено":"Выключено","›",()->extensionDetail(e));}});return null;},err->{runOnUiThread(()->toast("Ошибка списка: "+err));return null;});}
     private void extensionDetail(WebExtension e){boolean enabled=e.metaData!=null&&e.metaData.enabled;LinearLayout c=panel(extName(e),e.id,false);if(enabled){item(c,"↗","Открыть расширение","Оригинальная панель расширения","›",()->launchAddon(e));if(e.metaData.optionsPageUrl!=null)item(c,"⚙","Настройки расширения","Открыть собственную страницу настроек в новой вкладке","›",()->openAddonOptions(e));}item(c,"✓",enabled?"Отключить":"Включить","Действие на уровне движка",enabled?"●":"○",()->{GeckoResult<WebExtension> result=enabled?extensions.disable(e,WebExtensionController.EnableSource.USER):extensions.enable(e,WebExtensionController.EnableSource.USER);result.then(updated->{runOnUiThread(()->{registerAddon(updated);if(updated.metaData!=null&&updated.metaData.enabled)pin(updated);else updatePinned();extensionDetail(updated);});return null;},err->{runOnUiThread(()->notice("Ошибка",String.valueOf(err)));return null;});});item(c,"×","Удалить","","›",()->new AlertDialog.Builder(this).setTitle("Удалить "+extName(e)+"?").setNegativeButton("Отмена",null).setPositiveButton("Удалить",(d,w)->extensions.uninstall(e).then(v->{runOnUiThread(()->{registeredAddons.remove(e.id);addonActions.remove(e.id);if(e.id.equals(pinnedId)){pinnedId="";prefs.edit().remove("pinnedAddon").apply();}updatePinned();extensionList();});return null;},err->{runOnUiThread(()->notice("Ошибка",String.valueOf(err)));return null;})).show());}
     private boolean updateBusy=false; private java.io.File preparedUpdate;
     private void updatePanel(){LinearLayout c=panel("Обновление браузера","AetherBolt Delta • локальные патчи",false);item(c,"+","Открыть патч .aeb","Только для установленной версии и той же подписи","›",()->pickLocal(705));if(preparedUpdate!=null&&preparedUpdate.isFile())item(c,"✓","Установить обновление","Подтверждение через Android","›",()->installPrepared());}
@@ -1283,12 +1367,15 @@ public class MainActivity extends Activity {
     private void pickLocal(int request){Intent i=new Intent(Intent.ACTION_OPEN_DOCUMENT).setType("*/*").addCategory(Intent.CATEGORY_OPENABLE);startActivityForResult(i,request);}
     private void localArchives(){LinearLayout c=panel("Личные файлы","Только на устройстве",false);item(c,"+","Сохранить ZIP / JS","Хранение исходников; запуск ещё не подключён","›",()->pickLocal(704));java.io.File dir=new java.io.File(getFilesDir(),"private-addons");java.io.File[] entries=dir.listFiles();if(entries!=null)for(java.io.File f:entries)item(c,"▤",f.getName(),f.length()+" байт • не исполняется","×",()->new AlertDialog.Builder(this).setTitle("Удалить локальный файл?").setPositiveButton("Удалить",(d,w)->{f.delete();localArchives();}).setNegativeButton("Отмена",null).show());}
     private void importLocal(Uri uri,int request){
+        importLocal(uri,request,null);
+    }
+    private void importLocal(Uri uri,int request,String filename){
         final boolean install=request==703;
         if(install){if(addonImportUnavailable())return;packageImportBusy=true;}
         new Thread(()->{
             java.io.File out=null;
             try{
-                String original=selectedFileName(uri);
+                String original=filename==null?selectedFileName(uri):filename;
                 String name=original.replaceAll("[^\\p{L}\\p{N}._ -]","_");
                 if(name.isEmpty()||name.equals(".")||name.equals(".."))name="addon";
                 if(name.length()>100)name=name.substring(name.length()-100);
@@ -1699,7 +1786,7 @@ public class MainActivity extends Activity {
         };
         search.addTextChangedListener(new android.text.TextWatcher(){public void beforeTextChanged(CharSequence s,int a,int n,int f){}public void onTextChanged(CharSequence s,int a,int b,int n){render.run();}public void afterTextChanged(android.text.Editable e){}});render.run();
     }
-    private void allSettings(){LinearLayout c=panel("Все настройки","Управление AetherBolt Browser",false);section(c,"ПЕРСОНАЛИЗАЦИЯ");item(c,"⌕","Поисковая система",engineName,"›",()->engineDialog());item(c,"◎","Язык результатов",searchLanguageName()+" • "+SearchLanguage.support(engineTemplate),"›",()->searchLanguages());item(c,"✧","Внешний вид",appearance,"›",()->themes());item(c,"▣","Настройки сайтов","JavaScript, изображения, ПК, масштаб, медиа","›",()->webOptions());section(c,"ПРОИЗВОДИТЕЛЬНОСТЬ");item(c,"◎","Performance Center","Профили • память • батарея • трафик • вкладки","›",this::performanceCenter);item(c,"▶","Видео и производительность","Настройка нагрузки на планшет • диагностика","›",this::videoSettings);section(c,"БЕЗОПАСНОСТЬ И МОДУЛИ");item(c,"▣","Module Manager","Локальные инструменты • управление запуском","›",this::moduleManager);item(c,"✧","AI Center","GPT • ChatGPT Web • совместимые серверы","›",this::aiPanel);item(c,"◈","Password Vault","Локальное шифрованное хранилище","›",()->startActivity(new Intent(this,PasswordVaultActivity.class)));item(c,">_","DevSuite","Eruda • xterm • CyberChef • Linux • прокси","›",()->devSuitePanel());item(c,"◈","DevSuite Security","Кодирование • диагностика • расширения","›",this::securityCenter);item(c,"◈","VPN • WireGuard",vpn.active()?"Туннель включён":"Отключён","›",()->vpnPanel());item(c,"◈","Конфиденциальность","Cookies, история, реклама и трекеры","›",()->privacy());item(c,"◈","AdBlock Pro","uBlock Origin • управление фильтрами","›",this::adBlockPanel);item(c,"◎","DNS Manager","Системный DNS / DNS-over-HTTPS","›",this::dnsPanel);item(c,"✧","Расширения и скрипты","GeckoView • XPI / JS","›",()->addonManage());item(c,"◎","Tor Engine","Встроенный клиент • текстовый просмотр .onion","›",()->openTor(""));section(c,"ФАЙЛЫ И ДАННЫЕ");item(c,"▤","Backup Center","Зашифрованный экспорт и восстановление","›",this::backupPanel);item(c,"↓","Загрузки","Менеджер файлов","›",()->downloadPanel());item(c,"▤","File & Document Center","Папки • архивы • PDF • текст • HEX","›",()->startActivity(new Intent(this,FileCenterActivity.class)));item(c,"▤","Offline Browser","Снимки страниц • библиотека • режим чтения","›",this::offlinePanel);item(c,"⚙","Download Accelerator","Очередь и число параллельных скачиваний","›",this::downloadSettings);item(c,"▶","Media Center Pro","Локальные файлы • PiP • плейлист • EQ","›",()->startActivity(new Intent(this,MediaCenterActivity.class)));item(c,"×","Очистить данные","Кэш, история и cookies","›",()->clearData());section(c,"О ПРИЛОЖЕНИИ");item(c,"↻","Обновление браузера","Локальный дельта-патч .aeb","›",()->updatePanel());item(c,"⚡","AetherBolt Browser","0.9.7.9 Alpha • GeckoView 161","›",()->notice("AetherBolt","Beyond the Limits. GeckoView • XPI. Tor Engine — экспериментальный текстовый просмотр; не полноценный Tor Browser."));}
+    private void allSettings(){LinearLayout c=panel("Все настройки","Управление AetherBolt Browser",false);section(c,"ПЕРСОНАЛИЗАЦИЯ");item(c,"⌕","Поисковая система",engineName,"›",()->engineDialog());item(c,"◎","Язык результатов",searchLanguageName()+" • "+SearchLanguage.support(engineTemplate),"›",()->searchLanguages());item(c,"✧","Внешний вид",appearance,"›",()->themes());item(c,"▣","Настройки сайтов","JavaScript, изображения, ПК, масштаб, медиа","›",()->webOptions());section(c,"ПРОИЗВОДИТЕЛЬНОСТЬ");item(c,"◎","Performance Center","Профили • память • батарея • трафик • вкладки","›",this::performanceCenter);item(c,"▶","Видео и производительность","Настройка нагрузки на планшет • диагностика","›",this::videoSettings);section(c,"БЕЗОПАСНОСТЬ И МОДУЛИ");item(c,"▣","Module Manager","Локальные инструменты • управление запуском","›",this::moduleManager);item(c,"✧","AI Center","GPT • ChatGPT Web • совместимые серверы","›",this::aiPanel);item(c,"◈","Password Vault","Локальное шифрованное хранилище","›",()->startActivity(new Intent(this,PasswordVaultActivity.class)));item(c,">_","DevSuite","Eruda • xterm • CyberChef • Linux • прокси","›",()->devSuitePanel());item(c,"◈","DevSuite Security","Кодирование • диагностика • расширения","›",this::securityCenter);item(c,"◈","VPN • WireGuard",vpn.active()?"Туннель включён":"Отключён","›",()->vpnPanel());item(c,"◈","Конфиденциальность","Cookies, история, реклама и трекеры","›",()->privacy());item(c,"◈","AdBlock Pro","uBlock Origin • управление фильтрами","›",this::adBlockPanel);item(c,"◎","DNS Manager","Системный DNS / DNS-over-HTTPS","›",this::dnsPanel);item(c,"✧","Расширения и скрипты","GeckoView • XPI / JS","›",()->addonManage());item(c,"◎","Tor Engine","Встроенный клиент • текстовый просмотр .onion","›",()->openTor(""));section(c,"ФАЙЛЫ И ДАННЫЕ");item(c,"▤","Backup Center","Зашифрованный экспорт и восстановление","›",this::backupPanel);item(c,"↓","Загрузки","Менеджер файлов","›",()->downloadPanel());item(c,"▤","File & Document Center","Папки • архивы • PDF • текст • HEX","›",()->startActivity(new Intent(this,FileCenterActivity.class)));item(c,"▤","Offline Browser","Снимки страниц • библиотека • режим чтения","›",this::offlinePanel);item(c,"⚙","Download Accelerator","Очередь и число параллельных скачиваний","›",this::downloadSettings);item(c,"▶","Media Center Pro","Локальные файлы • PiP • плейлист • EQ","›",()->startActivity(new Intent(this,MediaCenterActivity.class)));item(c,"×","Очистить данные","Кэш, история и cookies","›",()->clearData());section(c,"О ПРИЛОЖЕНИИ");item(c,"↻","Обновление браузера","Локальный дельта-патч .aeb","›",()->updatePanel());item(c,"⚡","AetherBolt Browser","0.9.8.1 Alpha • GeckoView 161","›",()->notice("AetherBolt","Beyond the Limits. GeckoView • XPI. Tor Engine — экспериментальный текстовый просмотр; не полноценный Tor Browser."));}
     private void clearData(){
         if(clearingData){toast("Очистка уже выполняется");return;}
         LinearLayout c=panel("Очистка данных","История • кэш • данные сайтов",false);
