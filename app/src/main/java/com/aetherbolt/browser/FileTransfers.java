@@ -39,7 +39,7 @@ final class FileTransfers {
         final String id=UUID.randomUUID().toString(),name,type;
         final long total,started=System.currentTimeMillis();final WebResponse response;
         volatile long bytes,speed;
-        volatile boolean cancelled,done,paused,scheduled,committing;
+        volatile boolean cancelled,done,completed,paused,scheduled,committing;
         volatile String status="В очереди";
         Job(String name,String type,long total,WebResponse response){this.name=name;this.type=type;this.total=total;this.response=response;}
         boolean busy(){return !done;}
@@ -50,10 +50,11 @@ final class FileTransfers {
     int activeCount(){int n=0;for(Job j:downloads.values())if(j.busy())n++;return n;}
     int parallelLimit(){return Math.max(1,Math.min(3,prefs.getInt("downloadParallel",2)));}
     void setParallelLimit(int n){prefs.edit().putInt("downloadParallel",Math.max(1,Math.min(3,n))).apply();dispatch();notifyChanged();}
-    private synchronized void enqueue(WebResponse response,String name,String type){
-        if(destroyed||activeCount()>=MAX_PENDING){closeAsync(response);toast("Очередь заполнена или браузер закрыт");return;}
-        Job j=new Job(name,type,responseLength(response),response);
-        downloads.put(j.id,j);dispatch();notifyChanged();
+    private synchronized void enqueue(WebResponse response,String name,String type){enqueueExtensionResponse(response,name,type);}
+    synchronized Job enqueueExtensionResponse(WebResponse response,String name,String type){
+        if(destroyed||response==null||response.body==null||activeCount()>=MAX_PENDING){if(response!=null)closeAsync(response);toast("Очередь заполнена или файл недоступен");return null;}
+        Job j=new Job(filename(name),type,responseLength(response),response);
+        downloads.put(j.id,j);dispatch();notifyChanged();return j;
     }
     private synchronized void dispatch(){
         if(destroyed)return;
@@ -213,14 +214,14 @@ final class FileTransfers {
                 long bytes;try(OutputStream out=ui.getContentResolver().openOutputStream(dest,"w")){if(out==null)throw new IOException("Нет потока записи");bytes=copyJob(in,out,job);}
                 verifyLength(response,job,bytes);beginCommit(job);ContentValues ready=new ContentValues();ready.put(MediaStore.MediaColumns.IS_PENDING,0);if(ui.getContentResolver().update(dest,ready,null,null)<1)throw new IOException("Не удалось завершить запись");
                 String savedName=name;try(android.database.Cursor c=ui.getContentResolver().query(dest,new String[]{MediaStore.MediaColumns.DISPLAY_NAME},null,null,null)){if(c!=null&&c.moveToFirst())savedName=c.getString(0);}catch(Exception ignored){}
-                record(new Entry(savedName,type,bytes,dest,null));finished=true;toast("Сохранено в Download/AetherBolt: "+savedName);
+                record(new Entry(savedName,type,bytes,dest,null));finished=true;job.completed=true;toast("Сохранено в Download/AetherBolt: "+savedName);
             }else{
                 File folder=dir();part=File.createTempFile(".download-", ".part",folder);long bytes;
                 try(OutputStream out=new FileOutputStream(part)){bytes=copyJob(in,out,job);}
                 verifyLength(response,job,bytes);beginCommit(job);File target=new File(folder,System.currentTimeMillis()+"-"+name);if(!part.renameTo(target))throw new IOException("Не удалось завершить файл");
-                finished=true;toast("Сохранено в Загрузках браузера: "+target.getName());
+                finished=true;job.completed=true;toast("Сохранено в Загрузках браузера: "+target.getName());
             }
-        }catch(Exception e){job.status=job.cancelled?"Отменено":"Ошибка: "+String.valueOf(e.getMessage());toast(job.status);}finally{if(!finished&&dest!=null)try{ui.getContentResolver().delete(dest,null,null);}catch(Exception ignored){}if(part!=null&&part.exists())part.delete();job.speed=0;job.done=true;if(finished)downloads.remove(job.id,job);notifyChanged();}
+        }catch(Exception e){job.status=job.cancelled?"Отменено":"Ошибка: "+String.valueOf(e.getMessage());toast(job.status);}finally{if(!finished&&dest!=null)try{ui.getContentResolver().delete(dest,null,null);}catch(Exception ignored){}if(part!=null&&part.exists())part.delete();job.speed=0;job.done=true;if(finished)job.status="Готово";if(finished)downloads.remove(job.id,job);notifyChanged();}
     }
     private synchronized void record(Entry e)throws JSONException{
         JSONArray old=records();JSONObject item=new JSONObject().put("uri",e.publicUri.toString()).put("name",e.name).put("mime",e.mime).put("bytes",e.bytes).put("date",e.date);
