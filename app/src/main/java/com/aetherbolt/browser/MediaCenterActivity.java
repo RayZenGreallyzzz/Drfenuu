@@ -24,7 +24,32 @@ public final class MediaCenterActivity extends Activity {
     private SeekBar seek;
     private Uri current;
     private String currentName="Медиацентр";
-    private boolean dragging,closed,visible;
+    private boolean dragging,closed,visible,shuffle,wasPlayingBeforePicker,restoringControls=true;
+    private int repeatMode=0,index=-1,eqPreset=-1;
+    private float playbackRate=1f;
+    private final ArrayList<Uri> playlist=new ArrayList<>();
+    private final Random random=new Random();
+    private android.media.AudioManager audioManager;
+    private android.media.AudioFocusRequest focusRequest;
+    private boolean hasFocus;
+    private boolean pip(){return isInPictureInPictureMode();}
+    private boolean requestAudio(){
+        if(hasFocus)return true;
+        if(audioManager==null)return false;
+        if(focusRequest==null)focusRequest=new android.media.AudioFocusRequest.Builder(android.media.AudioManager.AUDIOFOCUS_GAIN)
+            .setAudioAttributes(new android.media.AudioAttributes.Builder().setUsage(android.media.AudioAttributes.USAGE_MEDIA).setContentType(android.media.AudioAttributes.CONTENT_TYPE_MUSIC).build())
+            .setWillPauseWhenDucked(true).setOnAudioFocusChangeListener(change->{
+                if(change==android.media.AudioManager.AUDIOFOCUS_LOSS||change==android.media.AudioManager.AUDIOFOCUS_LOSS_TRANSIENT||change==android.media.AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK){
+                    if(player!=null&&player.isPlaying())player.pause();
+                    if(change==android.media.AudioManager.AUDIOFOCUS_LOSS){hasFocus=false;audioManager.abandonAudioFocusRequest(focusRequest);}
+                }
+            },handler).build();
+        hasFocus=audioManager.requestAudioFocus(focusRequest)==android.media.AudioManager.AUDIOFOCUS_REQUEST_GRANTED;
+        if(!hasFocus)status.setText("Не удалось получить аудиофокус");
+        return hasFocus;
+    }
+    private void abandonAudio(){if(hasFocus&&audioManager!=null&&focusRequest!=null)audioManager.abandonAudioFocusRequest(focusRequest);hasFocus=false;}
+    private void resumePlayback(){if(player!=null&&requestAudio())player.play();}
     private final VideoPowerPolicy videoPower=new VideoPowerPolicy();
     private final Runnable tick=new Runnable(){public void run(){
         if(closed||!visible||controls.getVisibility()!=View.VISIBLE)return;
@@ -43,13 +68,14 @@ public final class MediaCenterActivity extends Activity {
     }
     @Override public void onCreate(Bundle state){
         super.onCreate(state);
-        getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        audioManager=(android.media.AudioManager)getSystemService(AUDIO_SERVICE);
+        getWindow().setVolumeControlStream(android.media.AudioManager.STREAM_MUSIC);
         FrameLayout root=new FrameLayout(this);root.setBackgroundColor(0xff000000);
         video=new VLCVideoLayout(this);root.addView(video,new FrameLayout.LayoutParams(-1,-1));
         View tap=new View(this);root.addView(tap,new FrameLayout.LayoutParams(-1,-1));tap.setOnClickListener(v->showControls(top.getVisibility()!=View.VISIBLE));
         top=new LinearLayout(this);top.setOrientation(LinearLayout.VERTICAL);top.setPadding(dp(12),dp(8),dp(12),dp(8));top.setBackgroundColor(0xd90b1020);
         LinearLayout head=row();head.addView(button("‹",()->finish()),new LinearLayout.LayoutParams(dp(52),dp(48)));
-        title=text("Медиацентр",18);title.setSingleLine(true);title.setEllipsize(android.text.TextUtils.TruncateAt.END);head.addView(title,new LinearLayout.LayoutParams(0,dp(48),1));head.addView(button("Файл",this::pick),new LinearLayout.LayoutParams(dp(76),dp(48)));top.addView(head);
+        title=text("Медиацентр",18);title.setSingleLine(true);title.setEllipsize(android.text.TextUtils.TruncateAt.END);head.addView(title,new LinearLayout.LayoutParams(0,dp(48),1));head.addView(button("Файлы",this::pick),new LinearLayout.LayoutParams(dp(76),dp(48)));top.addView(head);
         status=text("Выберите видео или аудио",13);top.addView(status,new LinearLayout.LayoutParams(-1,-2));root.addView(top,new FrameLayout.LayoutParams(-1,-2,Gravity.TOP));
         controls=new LinearLayout(this);controls.setOrientation(LinearLayout.VERTICAL);controls.setBackgroundColor(0xd90b1020);controls.setPadding(dp(12),dp(6),dp(12),dp(12));
         time=text("00:00 / —",14);controls.addView(time);seek=new SeekBar(this);seek.setMax(1000);seek.setEnabled(false);seek.setProgressTintList(android.content.res.ColorStateList.valueOf(CYAN));controls.addView(seek,new LinearLayout.LayoutParams(-1,dp(42)));
@@ -58,19 +84,96 @@ public final class MediaCenterActivity extends Activity {
             public void onProgressChanged(SeekBar s,int progress,boolean fromUser){}
             public void onStopTrackingTouch(SeekBar s){dragging=false;if(player!=null&&player.isSeekable()&&player.getLength()>0)player.setTime((long)(player.getLength()*(s.getProgress()/1000.0)));}
         });
-        LinearLayout buttons=row();addButton(buttons,"−10с",()->jump(-10000));play=button("▶",()->{if(player==null){pick();return;}if(player.isPlaying())player.pause();else player.play();});buttons.addView(play,new LinearLayout.LayoutParams(0,dp(48),1));addButton(buttons,"+10с",()->jump(10000));addButton(buttons,"Дорожки",this::tracks);addButton(buttons,"Скрыть",()->showControls(false));controls.addView(buttons);
-        LinearLayout extra=row();addButton(extra,"Другой плеер",this::external);addButton(extra,"Повтор",()->{if(current!=null)open(current,currentName);});controls.addView(extra);
+        LinearLayout buttons=row();addButton(buttons,"−10с",()->jump(-10000));play=button("▶",()->{if(player==null){pick();return;}if(player.isPlaying())player.pause();else resumePlayback();});buttons.addView(play,new LinearLayout.LayoutParams(0,dp(48),1));addButton(buttons,"+10с",()->jump(10000));addButton(buttons,"Дорожки",this::tracks);addButton(buttons,"Скрыть",()->showControls(false));controls.addView(buttons);
+        LinearLayout extra=row();addButton(extra,"‹ Трек",()->step(-1,false));addButton(extra,"Список",this::playlistDialog);addButton(extra,"Трек ›",()->step(1,false));addButton(extra,"PiP",this::enterPip);controls.addView(extra);
+        LinearLayout pro=row();addButton(pro,"Скорость",this::speedDialog);addButton(pro,"EQ",this::equalizerDialog);addButton(pro,"Режим",this::modeDialog);addButton(pro,"Другой плеер",this::external);controls.addView(pro);
         root.addView(controls,new FrameLayout.LayoutParams(-1,-2,Gravity.BOTTOM));
         setContentView(root);immersive();
-        Uri supplied=getIntent().getData();if(supplied!=null&&"content".equals(supplied.getScheme()))open(supplied,getIntent().getStringExtra("title"));else pick();
+        Uri supplied=getIntent().getData();if(supplied!=null&&"content".equals(supplied.getScheme())){playlist.add(supplied);index=0;open(supplied,getIntent().getStringExtra("title"));}else pick();
         videoPower.apply(getWindow(),getSharedPreferences("aetherbolt",MODE_PRIVATE).getBoolean("videoEco",true)||getSharedPreferences("aetherbolt",MODE_PRIVATE).getBoolean("videoAllPages",false));
     }
     private LinearLayout row(){LinearLayout r=new LinearLayout(this);r.setGravity(Gravity.CENTER_VERTICAL);r.setOrientation(LinearLayout.HORIZONTAL);return r;}
     private TextView text(String s,int size){TextView t=new TextView(this);t.setText(s);t.setTextSize(size);t.setTextColor(TEXT);t.setGravity(Gravity.CENTER_VERTICAL);return t;}
     private TextView button(String s,Runnable action){TextView b=text(s,14);b.setGravity(Gravity.CENTER);android.graphics.drawable.GradientDrawable bg=new android.graphics.drawable.GradientDrawable();bg.setColor(0xff171e35);bg.setCornerRadius(dp(12));bg.setStroke(dp(1),0xff52618c);b.setBackground(bg);b.setOnClickListener(v->action.run());return b;}
     private void addButton(LinearLayout row,String label,Runnable action){LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(0,dp(46),1);p.setMargins(dp(2),dp(2),dp(2),dp(2));row.addView(button(label,action),p);}
-    private void pick(){try{startActivityForResult(new Intent(Intent.ACTION_OPEN_DOCUMENT).setType("*/*").addCategory(Intent.CATEGORY_OPENABLE).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION),SELECT);}catch(Exception e){status.setText("Не удалось открыть файлы");}}
-    @Override protected void onActivityResult(int request,int result,Intent data){super.onActivityResult(request,result,data);if(request==SELECT&&result==RESULT_OK&&data!=null&&data.getData()!=null)open(data.getData(),null);}
+    private void pick(){
+        if(pip())return;
+        wasPlayingBeforePicker=player!=null&&player.isPlaying();
+        try{startActivityForResult(new Intent(Intent.ACTION_OPEN_DOCUMENT).setType("*/*").addCategory(Intent.CATEGORY_OPENABLE).putExtra(Intent.EXTRA_MIME_TYPES,new String[]{"audio/*","video/*","application/octet-stream"}).putExtra(Intent.EXTRA_ALLOW_MULTIPLE,true).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION),SELECT);}
+        catch(Exception e){status.setText("Не удалось открыть файлы");}
+    }
+    @Override protected void onActivityResult(int request,int result,Intent data){
+        super.onActivityResult(request,result,data);if(request!=SELECT)return;
+        if(result!=RESULT_OK||data==null){if(wasPlayingBeforePicker)handler.post(this::resumePlayback);return;}
+        LinkedHashSet<Uri> selected=new LinkedHashSet<>();
+        if(data.getClipData()!=null)for(int i=0;i<data.getClipData().getItemCount()&&selected.size()<100;i++){
+            Uri u=data.getClipData().getItemAt(i).getUri();if(u!=null&&"content".equals(u.getScheme()))selected.add(u);
+        }
+        if(data.getData()!=null&&"content".equals(data.getData().getScheme())&&selected.size()<100)selected.add(data.getData());
+        if(selected.isEmpty())return;
+        playlist.clear();playlist.addAll(selected);index=0;open(playlist.get(0),null);
+    }
+    private void playlistDialog(){
+        if(playlist.isEmpty()){pick();return;}
+        String[] names=new String[playlist.size()];for(int i=0;i<names.length;i++)names[i]=(i==index?"▶ ":"")+displayName(playlist.get(i));
+        new android.app.AlertDialog.Builder(this).setTitle("Плейлист • "+playlist.size()).setItems(names,(d,n)->{index=n;open(playlist.get(n),null);})
+            .setNeutralButton("Выбрать файлы",(d,w)->pick()).setNegativeButton("Закрыть",null).show();
+    }
+    private void step(int delta,boolean ended){
+        if(playlist.isEmpty())return;
+        int n=index+delta;
+        if(ended&&repeatMode==1)n=index;
+        else if(shuffle&&playlist.size()>1&&delta>0){n=random.nextInt(playlist.size()-1);if(n>=index)n++;}
+        else if(n<0||n>=playlist.size()){
+            if(repeatMode==2)n=(n+playlist.size())%playlist.size();
+            else {if(!ended)status.setText("Край плейлиста");return;}
+        }
+        index=n;open(playlist.get(n),null);
+    }
+    private void modeDialog(){
+        String[] modes={"Без повтора","Повтор одного","Повтор списка","Случайный порядок: "+(shuffle?"вкл":"выкл")};
+        new android.app.AlertDialog.Builder(this).setTitle("Режим плейлиста").setSingleChoiceItems(modes,repeatMode,(d,n)->{
+            if(n==3)shuffle=!shuffle;else repeatMode=n;d.dismiss();status.setText("Режим: "+(repeatMode==0?"без повтора":repeatMode==1?"повтор одного":"повтор списка")+(shuffle?" • случайно":""));
+        }).setNegativeButton("Закрыть",null).show();
+    }
+    private void speedDialog(){
+        float[] rates={0.5f,0.75f,1f,1.25f,1.5f,1.75f,2f};
+        String[] names={"0.5×","0.75×","1×","1.25×","1.5×","1.75×","2×"};
+        int selected=2;for(int i=0;i<rates.length;i++)if(rates[i]==playbackRate)selected=i;
+        new android.app.AlertDialog.Builder(this).setTitle("Скорость воспроизведения").setSingleChoiceItems(names,selected,(d,n)->{
+            playbackRate=rates[n];if(player!=null)player.setRate(playbackRate);d.dismiss();status.setText("Скорость: "+names[n]);
+        }).setNegativeButton("Закрыть",null).show();
+    }
+    private void applyEqualizer(){
+        if(player==null)return;
+        try{player.setEqualizer(eqPreset<0?null:MediaPlayer.Equalizer.createFromPreset(eqPreset));}
+        catch(RuntimeException|LinkageError e){status.setText("Эквалайзер недоступен");}
+    }
+    private void equalizerDialog(){
+        if(player==null)return;
+        try{
+            int count=MediaPlayer.Equalizer.getPresetCount();String[] names=new String[count+1];names[0]="Выключен";
+            for(int i=0;i<count;i++)names[i+1]=MediaPlayer.Equalizer.getPresetName(i);
+            new android.app.AlertDialog.Builder(this).setTitle("Эквалайзер LibVLC").setSingleChoiceItems(names,eqPreset+1,(d,n)->{
+                eqPreset=n-1;applyEqualizer();d.dismiss();
+            }).setNegativeButton("Закрыть",null).show();
+        }catch(RuntimeException|LinkageError e){status.setText("Эквалайзер недоступен");}
+    }
+    private void enterPip(){
+        if(player==null||!player.isPlaying()){status.setText("Сначала запустите видео");return;}
+        if(!getPackageManager().hasSystemFeature(android.content.pm.PackageManager.FEATURE_PICTURE_IN_PICTURE)){status.setText("PiP не поддерживается устройством");return;}
+        restoringControls=top.getVisibility()==View.VISIBLE;
+        showControls(false);
+        try{
+            android.app.PictureInPictureParams params=new android.app.PictureInPictureParams.Builder().setAspectRatio(new android.util.Rational(16,9)).build();
+            if(!enterPictureInPictureMode(params)){showControls(restoringControls);status.setText("Не удалось открыть PiP");}
+        }catch(RuntimeException e){showControls(restoringControls);status.setText("PiP недоступен");}
+    }
+    @Override public void onPictureInPictureModeChanged(boolean inPip,android.content.res.Configuration config){
+        super.onPictureInPictureModeChanged(inPip,config);
+        if(inPip){showControls(false);getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);}
+        else{showControls(restoringControls);if(player!=null&&player.isPlaying())getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);}
+    }
     private String displayName(Uri u){try(Cursor c=getContentResolver().query(u,new String[]{OpenableColumns.DISPLAY_NAME},null,null,null)){if(c!=null&&c.moveToFirst())return c.getString(0);}catch(Exception ignored){}return "Локальный файл";}
     private void open(Uri u,String name){
         if(!"content".equals(u.getScheme())){status.setText("Разрешены локальные файлы Android");return;}
@@ -80,15 +183,15 @@ public final class MediaCenterActivity extends Activity {
             lib=new LibVLC(this,new ArrayList<String>());player=new MediaPlayer(lib);final MediaPlayer active=player;
             player.attachViews(video,null,true,false);
             player.setEventListener(event->runOnUiThread(()->{if(closed||player!=active)return;switch(event.type){
-                case MediaPlayer.Event.Playing:play.setText("Ⅱ");status.setText("Воспроизведение");break;
-                case MediaPlayer.Event.Paused:play.setText("▶");status.setText("Пауза");break;
+                case MediaPlayer.Event.Playing:play.setText("Ⅱ");status.setText("Воспроизведение • "+playbackRate+"×");if(!pip())getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);break;
+                case MediaPlayer.Event.Paused:play.setText("▶");status.setText("Пауза");getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);break;
                 case MediaPlayer.Event.Buffering:if(event.getBuffering()<100&&!android.text.TextUtils.equals(status.getText(),"Буферизация"))status.setText("Буферизация");break;
-                case MediaPlayer.Event.EndReached:play.setText("▶");status.setText("Воспроизведение завершено");showControls(true);break;
-                case MediaPlayer.Event.EncounteredError:play.setText("▶");status.setText("Ошибка декодирования. Попробуйте другой проигрыватель.");showControls(true);break;
+                case MediaPlayer.Event.EndReached:play.setText("▶");status.setText("Воспроизведение завершено");getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);showControls(!pip());handler.post(()->{if(!closed&&visible&&player==active){step(1,true);if(player==active)abandonAudio();}});break;
+                case MediaPlayer.Event.EncounteredError:play.setText("▶");status.setText("Ошибка декодирования. Попробуйте другой проигрыватель.");getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);abandonAudio();showControls(!pip());break;
                 default:break;
             }}));
             Media media=new Media(lib,file.getFileDescriptor());try{media.setHWDecoderEnabled(true,getSharedPreferences("aetherbolt",MODE_PRIVATE).getBoolean("videoHwPriority",false));player.setMedia(media);}finally{media.release();}
-            player.play();
+            player.setRate(playbackRate);applyEqualizer();resumePlayback();
         }catch(Exception|LinkageError e){releasePlayer();status.setText("Ошибка открытия: "+e.getMessage());}
     }
     private void tracks(){
@@ -104,11 +207,11 @@ public final class MediaCenterActivity extends Activity {
     private void jump(long delta){if(player!=null&&player.isSeekable()){long next=Math.max(0,player.getTime()+delta);if(player.getLength()>0)next=Math.min(next,player.getLength());player.setTime(next);}}
     private static String formatTime(long ms){long sec=Math.max(0,ms/1000);return sec>=3600?String.format(Locale.ROOT,"%d:%02d:%02d",sec/3600,sec/60%60,sec%60):String.format(Locale.ROOT,"%02d:%02d",sec/60,sec%60);}
     private void external(){if(current==null)return;try{String m=getContentResolver().getType(current);Intent i=new Intent(Intent.ACTION_VIEW).setDataAndType(current,m==null?"*/*":m).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);startActivity(Intent.createChooser(i,"Открыть в другом проигрывателе"));}catch(Exception e){status.setText("Нет приложения для этого файла");}}
-    private void showControls(boolean show){top.setVisibility(show?View.VISIBLE:View.GONE);controls.setVisibility(show?View.VISIBLE:View.GONE);handler.removeCallbacks(tick);if(show&&visible)handler.post(tick);immersive();}
-    private void immersive(){if(Build.VERSION.SDK_INT>=30){WindowInsetsController c=getWindow().getInsetsController();if(c!=null){c.setSystemBarsBehavior(WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);c.hide(WindowInsets.Type.systemBars());}}else getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_FULLSCREEN|View.SYSTEM_UI_FLAG_HIDE_NAVIGATION|View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY);}
+    private void showControls(boolean show){show=show&&!pip();top.setVisibility(show?View.VISIBLE:View.GONE);controls.setVisibility(show?View.VISIBLE:View.GONE);handler.removeCallbacks(tick);if(show&&visible)handler.post(tick);immersive();}
+    private void immersive(){if(pip())return;if(Build.VERSION.SDK_INT>=30){WindowInsetsController c=getWindow().getInsetsController();if(c!=null){c.setSystemBarsBehavior(WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);c.hide(WindowInsets.Type.systemBars());}}else getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_FULLSCREEN|View.SYSTEM_UI_FLAG_HIDE_NAVIGATION|View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY);}
     @Override public void onWindowFocusChanged(boolean hasFocus){super.onWindowFocusChanged(hasFocus);if(hasFocus)immersive();}
     @Override protected void onStart(){super.onStart();visible=true;handler.removeCallbacks(tick);if(controls.getVisibility()==View.VISIBLE)handler.post(tick);}
-    @Override protected void onStop(){visible=false;handler.removeCallbacks(tick);if(player!=null&&player.isPlaying())player.pause();super.onStop();}
-    private void releasePlayer(){if(player!=null){try{player.setEventListener(null);player.stop();player.detachViews();player.release();}catch(Exception ignored){}player=null;}if(lib!=null){try{lib.release();}catch(Exception ignored){}lib=null;}if(file!=null){try{file.close();}catch(Exception ignored){}file=null;}}
+    @Override protected void onStop(){visible=false;handler.removeCallbacks(tick);if(player!=null&&player.isPlaying())player.pause();abandonAudio();getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);super.onStop();}
+    private void releasePlayer(){getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);abandonAudio();if(player!=null){try{player.setEventListener(null);player.stop();player.detachViews();player.release();}catch(Exception ignored){}player=null;}if(lib!=null){try{lib.release();}catch(Exception ignored){}lib=null;}if(file!=null){try{file.close();}catch(Exception ignored){}file=null;}}
     @Override protected void onDestroy(){closed=true;handler.removeCallbacksAndMessages(null);releasePlayer();videoPower.apply(getWindow(),false);super.onDestroy();}
 }
