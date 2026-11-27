@@ -39,6 +39,7 @@ final class FileTransfers {
         boolean busy(){return !done;}
     }
     List<Job> jobs(){ArrayList<Job> list=new ArrayList<>(downloads.values());list.sort(Comparator.comparingLong((Job j)->j.started).reversed());return list;}
+    boolean hasPendingUpload(GeckoSession session){return uploadSession==session;}
     int activeCount(){int n=0;for(Job j:downloads.values())if(j.busy())n++;return n;}
     void cancel(Job j){if(j.done)return;j.cancelled=true;j.status="Отмена…";new Thread(()->close(j.response),"aether-download-cancel").start();}
     void dismiss(Job j){if(j.done){downloads.remove(j.id,j);notifyChanged();}}
