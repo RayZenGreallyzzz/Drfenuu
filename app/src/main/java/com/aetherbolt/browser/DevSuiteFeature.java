@@ -19,11 +19,24 @@ final class DevSuiteFeature {
     private WebExtension bridge,tools;
     private WebExtension.Port control;
     private boolean running,loadingTools;
+    private String captureToken;
+    private WebExtension.Port capturePort;
+    private java.util.function.Consumer<JSONObject> captureCallback;
+    private final android.os.Handler captureHandler=new android.os.Handler(android.os.Looper.getMainLooper());
+    private final Runnable captureTimeout=()->finishCapture(null);
+    private void finishCapture(JSONObject data){java.util.function.Consumer<JSONObject> cb=captureCallback;captureCallback=null;captureToken=null;capturePort=null;captureHandler.removeCallbacks(captureTimeout);if(cb!=null)cb.accept(data);}
+    void capture(java.util.function.Consumer<JSONObject> callback){
+        if(captureCallback!=null){callback.accept(null);return;}
+        WebExtension.Port p=ports.get(current.get());if(!running||p==null){callback.accept(null);return;}
+        captureToken=UUID.randomUUID().toString();capturePort=p;captureCallback=callback;
+        captureHandler.postDelayed(captureTimeout,8000);
+        try{p.postMessage(new JSONObject().put("type","offline_capture").put("token",captureToken));}catch(Exception e){finishCapture(null);}
+    }
     DevSuiteFeature(Activity ui,GeckoRuntime runtime,Supplier<GeckoSession> current,BiConsumer<WebExtension,String> open){this.ui=ui;this.runtime=runtime;this.current=current;this.open=open;}
     private void message(String msg){if(running&&!ui.isDestroyed())Toast.makeText(ui,msg,Toast.LENGTH_LONG).show();}
     private final WebExtension.PortDelegate receiver=new WebExtension.PortDelegate(){
-        @Override public void onPortMessage(Object msg,WebExtension.Port p){if(msg instanceof JSONObject && (p==control||p==ports.get(current.get()))){JSONObject j=(JSONObject)msg;if("result".equals(j.optString("type")))message(j.optString("message","Готово"));}}
-        @Override public void onDisconnect(WebExtension.Port p){if(control==p)control=null;ports.values().removeIf(v->v==p);}
+        @Override public void onPortMessage(Object msg,WebExtension.Port p){if(msg instanceof JSONObject&&p==capturePort&&captureToken!=null){JSONObject data=(JSONObject)msg;if("offline_capture".equals(data.optString("type"))&&captureToken.equals(data.optString("token"))){finishCapture(p==ports.get(current.get())?data:null);return;}}if(msg instanceof JSONObject && (p==control||p==ports.get(current.get()))){JSONObject j=(JSONObject)msg;if("result".equals(j.optString("type")))message(j.optString("message","Готово"));}}
+        @Override public void onDisconnect(WebExtension.Port p){if(capturePort==p)finishCapture(null);if(control==p)control=null;ports.values().removeIf(v->v==p);}
     };
     void start(){
         running=true;WebExtensionController c=runtime.getWebExtensionController();
@@ -37,7 +50,7 @@ final class DevSuiteFeature {
         @Override public void onConnect(WebExtension.Port p){if(!running||!sessions.contains(s)||p.sender.session!=s||!p.sender.isTopLevel()){p.disconnect();return;}WebExtension.Port old=ports.put(s,p);p.setDelegate(receiver);if(old!=null&&old!=p)old.disconnect();}
     },"devsuite_tab");}
     void detach(GeckoSession s){sessions.remove(s);if(bridge!=null)s.getWebExtensionController().setMessageDelegate(bridge,null,"devsuite_tab");WebExtension.Port p=ports.remove(s);if(p!=null)p.disconnect();}
-    void stop(){running=false;for(GeckoSession s:new ArrayList<>(sessions))detach(s);if(bridge!=null)bridge.setMessageDelegate(null,"devsuite_control");WebExtension.Port p=control;control=null;if(p!=null)p.disconnect();}
+    void stop(){running=false;finishCapture(null);for(GeckoSession s:new ArrayList<>(sessions))detach(s);if(bridge!=null)bridge.setMessageDelegate(null,"devsuite_control");WebExtension.Port p=control;control=null;if(p!=null)p.disconnect();}
     void send(String type){WebExtension.Port p=ports.get(current.get());if(p==null){message("Откройте HTTP(S)-страницу и при необходимости обновите её.");return;}try{p.postMessage(new JSONObject().put("type",type));}catch(Exception e){message("DevSuite: "+e);}}
     void openTool(String page){
         if(tools!=null){open.accept(tools,page);return;}
