@@ -221,7 +221,7 @@ public class MainActivity extends Activity {
         String[] names={"Google","DuckDuckGo","Bing","Brave Search","Qwant","Яндекс","Ahmia","Добавить"};String[] icons={"G","D","b","B","Q","Я","◎","+"};int[] colors={0xff79aaff,0xffff9c50,CYAN,0xffff855d,PURPLE,0xffff7d8a,0xffc69cff,TEXT};Runnable[] actions=new Runnable[8];for(int i=0;i<6;i++){final int n=i;actions[i]=()->setEngine(Router.ENGINES[n][0],Router.ENGINES[n][1]);}actions[6]=()->setEngine(Router.ENGINES[10][0],Router.ENGINES[10][1]);actions[7]=()->customEngine();
         int cols=getResources().getConfiguration().screenWidthDp>=720?8:4;grid(box,names,icons,colors,actions,cols);
         grid(box,new String[]{"Дополнения","Загрузки","Закладки","История","Настройки","Вкладки"},new String[]{"✧","↓","☆","◷","⚙","▣"},new int[]{PURPLE,CYAN},new Runnable[]{()->quickAddons(),()->downloadPanel(),()->listDialog("Закладки",bookmarks,"bookmarks"),()->listDialog("История",history,"history"),()->settings(),()->tabDialog()},getResources().getConfiguration().screenWidthDp>=650?6:3);
-        TextView note=label("GECKO ALPHA 0.9.5   •   Tor Engine • эксперимент",11,MUTED);note.setGravity(Gravity.CENTER);add(box,note,-1,28);return sc;
+        TextView note=label("GECKO ALPHA 0.9.6   •   Tor Engine • эксперимент",11,MUTED);note.setGravity(Gravity.CENTER);add(box,note,-1,28);return sc;
     }
 
     private android.graphics.drawable.Drawable ripple(int color,int radius,int stroke){return new android.graphics.drawable.RippleDrawable(android.content.res.ColorStateList.valueOf(0x337f8cff),shape(color,radius,stroke),null);}
@@ -546,6 +546,9 @@ public class MainActivity extends Activity {
         LinearLayout c=panel("DevSuite Security","Инструменты для собственных и разрешённых тестовых систем",false);
         section(c,"ЛОКАЛЬНЫЕ ИНСТРУМЕНТЫ");
         item(c,"#","Encoder Lab","Base64 • URL • HEX • SHA-256; офлайн","›",this::encoderLab);
+        item(c,"▤","HTTP Lab","Редактор GET / POST / HEAD • локальный тестовый сервер","›",()->startActivity(new Intent(this,HttpLabActivity.class)));
+        item(c,"◎","Network Inspector","Сводка загрузки ресурсов текущей страницы","›",this::networkInspector);
+        item(c,"◈","Профили прокси","Сохранить и выбрать сервер","›",this::proxyPanel);
         item(c,"▤","CyberChef","Дополнительные локальные преобразования","›",()->launchLocalTool("cyberchef","cyberchef/CyberChef_v11.6.0.html"));
         item(c,"◎","Сведения о текущей странице","Схема • хост • порт • состояние HTTPS URL; без сетевых запросов","›",this::siteSummary);
         section(c,"ОПЦИОНАЛЬНЫЕ РАСШИРЕНИЯ");
@@ -554,17 +557,37 @@ public class MainActivity extends Activity {
         item(c,"◎","Wappalyzer","Определение технологий сайта; отдельная загрузка","›",()->securityAddon("Wappalyzer","wappalyzer","Расширение запрашивает доступ к данным сайтов. Изучите разрешения и политику приватности. Размер зависит от версии."));
         item(c,"✧","Установленные расширения","Управление разрешениями и состоянием через GeckoView","›",this::addonManage);
         section(c,"СПРАВОЧНЫЕ РЕСУРСЫ");
-        item(c,"◎","Shodan","Открыть официальный сайт вручную; без API и фоновых запросов","›",()->openSecurityResource("https://www.shodan.io/"));
-        item(c,"◎","HackBar","Исследование совместимости; локальные преобразования уже доступны в Encoder Lab","",()->notice("HackBar","Интеграция редактора запросов и совместимость панели пока не проверены."));
-        item(c,"◎","DotGit","В черновике; автоматических проверок сайтов и скачивания репозиториев нет","",()->notice("DotGit","Планируется отдельная проверка безопасности и совместимости. Используйте только разрешённые тестовые системы."));
+        item(c,"◎","Shodan","Официальный сервис и документация API","›",this::shodanPanel);
+        item(c,"◎","HackBar","Оригинальное дополнение • локальная альтернатива HTTP Lab","›",()->{LinearLayout p=panel("HackBar","Для собственных тестовых систем",false);item(p,"▤","HTTP Lab","Встроенный редактор локальных запросов","›",()->startActivity(new Intent(this,HttpLabActivity.class)));item(p,"#","Encoder Lab","Локальные преобразования","›",this::encoderLab);item(p,"↗","Официальная страница и загрузка","Требует F12 / DevTools; совместимость GeckoView не подтверждена","›",()->openSecurityResource("https://addons.mozilla.org/firefox/addon/hackbartool/"));});
+        item(c,"◎","DotGit","Сведения и официальный каталог • не встроенный сканер","›",()->{LinearLayout p=panel("DotGit","Проверка только разрешённых систем",false);item(p,"◎","Внимание","Оригинальное расширение может автоматически проверять посещаемые сайты и получать открытые репозитории. В AetherBolt такой сканер не запускается.","",()->{});item(p,"↗","Официальная страница Mozilla","Описание, разрешения и загрузка оригинала","›",()->openSecurityResource("https://addons.mozilla.org/firefox/addon/dotgit/"));});
+        item(c,"◎","Tor Engine","Встроенный текстовый режим","›",()->openTor(""));item(c,"↗","Tor Browser для Android","Официальная загрузка полноценного отдельного браузера","›",()->openSecurityResource("https://www.torproject.org/download/"));
         section(c,"ПРИВАТНОСТЬ");
         item(c,"◈","Ничего не устанавливается автоматически","Дополнения Mozilla загружаются только по вашему выбору. Проверяйте разрешения и отключайте неиспользуемые расширения.","",()->{});
+    }
+    private void shodanPanel(){
+        LinearLayout c=panel("Shodan","Публичный индекс • ручная работа",false);
+        item(c,"↗","Shodan Web","Вход в официальный сервис","›",()->openSecurityResource("https://www.shodan.io/"));
+        item(c,"↗","Документация API","Официальная документация и условия доступа","›",()->openSecurityResource("https://developer.shodan.io/api"));
+        item(c,"◎","Ограничения","Встроенного поиска по уязвимым устройствам, сканирования и хранения API-ключа нет.","",()->{});
+    }
+    private void networkInspector(){
+        if(tabs.isEmpty()||current().home||current().extensionOwner!=null||current().session==null||Router.parse(current().url).kind!=Router.Kind.WEB){toast("Откройте веб-страницу");return;}
+        final Tab t=current();final GeckoSession session=t.session;final String url=t.url;
+        devSuite.inspect(data->{
+            if(isDestroyed()||isFinishing())return;
+            if(data==null||tabs.isEmpty()||current()!=t||t.session!=session||!url.equals(t.url)||!url.equals(data.optString("url"))){toast("Сведения недоступны; обновите страницу");return;}
+            LinearLayout c=panel("Network Inspector","Resource Timing • локальная сводка",false);
+            item(c,"◎","Ресурсов",String.valueOf(data.optInt("count")),"",()->{});
+            item(c,"◎","Передано (доступные измерения)",android.text.format.Formatter.formatShortFileSize(this,Math.max(0,data.optLong("bytes"))),"",()->{});
+            JSONArray rows=data.optJSONArray("rows");if(rows!=null)for(int i=0;i<Math.min(100,rows.length());i++){JSONObject r=rows.optJSONObject(i);if(r!=null)item(c,"◎",r.optString("host","—"),r.optString("kind")+" • "+r.optLong("ms")+" мс • "+r.optLong("bytes")+" Б","",()->{});}
+            item(c,"◎","Ограничения","До 100 последних ресурсов; только измерения страницы. Без заголовков, cookies, тел запросов и полного сетевого перехвата. Межсайтовые значения могут быть нулевыми.","",()->{});
+        });
     }
     private void securityAddon(String name,String slug,String warning){
         LinearLayout c=panel(name,"Оригинальный каталог Mozilla Add-ons",false);
         TextView t=label(warning+"\nСовместимость Firefox Android не гарантирует работу в GeckoView.",14,MUTED);t.setPadding(dp(12),dp(10),dp(12),dp(10));c.addView(t);
         item(c,"↗","Страница Mozilla","Описание, автор, лицензия и разрешения","›",()->openSecurityResource("https://addons.mozilla.org/firefox/addon/"+slug+"/"));
-        item(c,"↓","Запросить установку","Официальный XPI; подтверждение и проверка движком","›",()->confirmXpi("https://addons.mozilla.org/firefox/downloads/latest/"+slug+"/latest.xpi"));
+        item(c,"↓","Скачать / установить XPI","Официальный XPI; подтверждение и проверка движком","›",()->confirmXpi("https://addons.mozilla.org/firefox/downloads/latest/"+slug+"/latest.xpi"));
         item(c,"✧","Управление расширениями","Проверка наличия и включения","›",this::addonManage);
     }
     private void openSecurityResource(String url){
@@ -595,7 +618,10 @@ public class MainActivity extends Activity {
     private void devSuitePanel(){
         boolean page=!tabs.isEmpty()&&!current().home&&Router.parse(current().url).kind==Router.Kind.WEB;
         LinearLayout c=panel("DevSuite","AetherBolt • Инструменты разработчика",true);
-        section(c,"БЕЗОПАСНОСТЬ");item(c,"◈","DevSuite Security","Кодирование • диагностика • каталог расширений","›",this::securityCenter);
+        section(c,"БЕЗОПАСНОСТЬ");item(c,"◈","DevSuite Security","Все инструменты и официальные загрузки","›",this::securityCenter);
+        item(c,"▤","HTTP Lab","Локальный редактор HTTP","›",()->startActivity(new Intent(this,HttpLabActivity.class)));
+        item(c,"◎","Network Inspector","Ресурсы и время загрузки","›",this::networkInspector);
+        item(c,"#","Encoder Lab","Кодирование и хеширование","›",this::encoderLab);
         section(c,"ТЕКУЩАЯ СТРАНИЦА");
         item(c,"JS","Eruda — инспектор",page?"DOM • CSS • сеть • консоль":"Сначала откройте сайт","›",()->{if(!page){toast("Откройте HTTP(S)-страницу");return;}if(!ModuleCatalog.guard(this,"eruda"))return;dismissPanel();devSuite.send("eruda");});
         item(c,">_","xterm — JavaScript-консоль",page?"Выполнение JS в активной вкладке":"Сначала откройте сайт","›",()->{if(!page){toast("Откройте HTTP(S)-страницу");return;}if(!ModuleCatalog.guard(this,"xterm"))return;dismissPanel();devSuite.send("xterm");});
@@ -613,12 +639,19 @@ public class MainActivity extends Activity {
         item(c,"◎","Прямое соединение","Отключить прокси","›",()->{devSuite.sendProxy("direct","",0);devSuitePanel();});
         item(c,"◈","SOCKS5","Удалённое разрешение DNS","›",()->proxyForm("socks"));
         item(c,"◈","HTTPS","TLS-соединение с прокси","›",()->proxyForm("https"));
-        add(c,label("Прокси не заменяет VPN. Авторизация пока не поддерживается; проверяйте внешний IP.",12,MUTED),-1,-2);
+        section(c,"СОХРАНЁННЫЕ ПРОФИЛИ");
+        JSONArray profiles=proxyProfiles();
+        for(int i=0;i<profiles.length();i++){JSONObject p=profiles.optJSONObject(i);if(p==null)continue;final int index=i;String host=p.optString("host"),type=p.optString("type");int port=p.optInt("port");
+            item(c,"◈",type.toUpperCase(Locale.ROOT)+" • "+host+":"+port,"Подключить или удалить профиль","›",()->new AlertDialog.Builder(this).setTitle("Профиль прокси").setItems(new String[]{"Подключить","Удалить"},(dialog,choice)->{if(choice==0)devSuite.sendProxy(type,host,port);else{JSONArray list=proxyProfiles();list.remove(index);prefs.edit().putString("proxyProfiles",list.toString()).apply();proxyPanel();}}).show());
+        }
+        add(c,label("Прокси не заменяет VPN. Авторизация пока не поддерживается; проверяйте внешний IP. Не используйте одновременно FoxyProxy и встроенный прокси. Профили не подключаются автоматически.",12,MUTED),-1,-2);
     }
+    private JSONArray proxyProfiles(){try{return new JSONArray(prefs.getString("proxyProfiles","[]"));}catch(Exception e){return new JSONArray();}}
     private void proxyForm(String type){
         LinearLayout c=panel(type.equals("socks")?"SOCKS5":"HTTPS","DevSuite • Настройка сервера",true);
         EditText host=field("Адрес сервера"),port=field("Порт");port.setInputType(android.text.InputType.TYPE_CLASS_NUMBER);port.setText(type.equals("socks")?"1080":"443");add(c,host,-1,52);add(c,port,-1,52);
         item(c,"✓","Подключить","Сохранить на текущий сеанс","›",()->{String h=host.getText().toString().trim();try{int p=Integer.parseInt(port.getText().toString());if(h.isEmpty()||!h.matches("[a-zA-Z0-9.:-]+")||p<1||p>65535)throw new IllegalArgumentException();devSuite.sendProxy(type,h,p);devSuitePanel();}catch(Exception e){host.setError("Проверьте адрес и порт");}});
+        item(c,"+","Сохранить профиль","Без подключения","›",()->{try{String h=host.getText().toString().trim();int p=Integer.parseInt(port.getText().toString());if(h.isEmpty()||!h.matches("[a-zA-Z0-9.:-]{1,253}")||p<1||p>65535)throw new IllegalArgumentException();JSONArray list=proxyProfiles();if(list.length()>=30){toast("Лимит 30 профилей");return;}list.put(new JSONObject().put("type",type).put("host",h).put("port",p));prefs.edit().putString("proxyProfiles",list.toString()).apply();proxyPanel();}catch(Exception e){host.setError("Проверьте адрес и порт");}});
     }
 
     private android.graphics.drawable.Drawable icon(String key,int color,int size){BoltIcon d=new BoltIcon(key,color);d.setBounds(0,0,dp(size),dp(size));return d;}
@@ -1102,7 +1135,7 @@ public class MainActivity extends Activity {
         item(c,"✧","Инструменты и модули","AI, VPN, файлы, расширения","›",this::toolsHub);
         item(c,"⚙","Все настройки","Полный список функций и обновления","›",this::allSettings);
     }
-    private void allSettings(){LinearLayout c=panel("Все настройки","Управление AetherBolt Browser",false);section(c,"ПЕРСОНАЛИЗАЦИЯ");item(c,"⌕","Поисковая система",engineName,"›",()->engineDialog());item(c,"◎","Язык результатов",searchLanguageName()+" • "+SearchLanguage.support(engineTemplate),"›",()->searchLanguages());item(c,"✧","Внешний вид",appearance,"›",()->themes());item(c,"▣","Настройки сайтов","JavaScript, изображения, ПК, масштаб, медиа","›",()->webOptions());section(c,"ПРОИЗВОДИТЕЛЬНОСТЬ");item(c,"◎","Performance Center","Профили • память • батарея • трафик • вкладки","›",this::performanceCenter);item(c,"▶","Видео и производительность","Настройка нагрузки на планшет • диагностика","›",this::videoSettings);section(c,"БЕЗОПАСНОСТЬ И МОДУЛИ");item(c,"▣","Module Manager","Локальные инструменты • управление запуском","›",this::moduleManager);item(c,"✧","AI Center","GPT • ChatGPT Web • совместимые серверы","›",this::aiPanel);item(c,"◈","Password Vault","Локальное шифрованное хранилище","›",()->startActivity(new Intent(this,PasswordVaultActivity.class)));item(c,">_","DevSuite","Eruda • xterm • CyberChef • Linux • прокси","›",()->devSuitePanel());item(c,"◈","DevSuite Security","Кодирование • диагностика • расширения","›",this::securityCenter);item(c,"◈","VPN • WireGuard",vpn.active()?"Туннель включён":"Отключён","›",()->vpnPanel());item(c,"◈","Конфиденциальность","Cookies, история, реклама и трекеры","›",()->privacy());item(c,"◈","AdBlock Pro","uBlock Origin • управление фильтрами","›",this::adBlockPanel);item(c,"◎","DNS Manager","Системный DNS / DNS-over-HTTPS","›",this::dnsPanel);item(c,"✧","Расширения и скрипты","GeckoView • XPI / JS","›",()->addonManage());item(c,"◎","Tor Engine","Встроенный клиент • текстовый просмотр .onion","›",()->openTor(""));section(c,"ФАЙЛЫ И ДАННЫЕ");item(c,"▤","Backup Center","Зашифрованный экспорт и восстановление","›",this::backupPanel);item(c,"↓","Загрузки","Менеджер файлов","›",()->downloadPanel());item(c,"▤","File & Document Center","Папки • архивы • PDF • текст • HEX","›",()->startActivity(new Intent(this,FileCenterActivity.class)));item(c,"▤","Offline Browser","Снимки страниц • библиотека • режим чтения","›",this::offlinePanel);item(c,"⚙","Download Accelerator","Очередь и число параллельных скачиваний","›",this::downloadSettings);item(c,"▶","Media Center Pro","Локальные файлы • PiP • плейлист • EQ","›",()->startActivity(new Intent(this,MediaCenterActivity.class)));item(c,"×","Очистить данные","История и данные сайтов","›",()->clearData());section(c,"О ПРИЛОЖЕНИИ");item(c,"↻","Обновление браузера","Локальный дельта-патч .aeb","›",()->updatePanel());item(c,"⚡","AetherBolt Browser","0.9.5 Alpha • GeckoView 161","›",()->notice("AetherBolt","Beyond the Limits. GeckoView • XPI. Tor Engine — экспериментальный текстовый просмотр; не полноценный Tor Browser."));}
+    private void allSettings(){LinearLayout c=panel("Все настройки","Управление AetherBolt Browser",false);section(c,"ПЕРСОНАЛИЗАЦИЯ");item(c,"⌕","Поисковая система",engineName,"›",()->engineDialog());item(c,"◎","Язык результатов",searchLanguageName()+" • "+SearchLanguage.support(engineTemplate),"›",()->searchLanguages());item(c,"✧","Внешний вид",appearance,"›",()->themes());item(c,"▣","Настройки сайтов","JavaScript, изображения, ПК, масштаб, медиа","›",()->webOptions());section(c,"ПРОИЗВОДИТЕЛЬНОСТЬ");item(c,"◎","Performance Center","Профили • память • батарея • трафик • вкладки","›",this::performanceCenter);item(c,"▶","Видео и производительность","Настройка нагрузки на планшет • диагностика","›",this::videoSettings);section(c,"БЕЗОПАСНОСТЬ И МОДУЛИ");item(c,"▣","Module Manager","Локальные инструменты • управление запуском","›",this::moduleManager);item(c,"✧","AI Center","GPT • ChatGPT Web • совместимые серверы","›",this::aiPanel);item(c,"◈","Password Vault","Локальное шифрованное хранилище","›",()->startActivity(new Intent(this,PasswordVaultActivity.class)));item(c,">_","DevSuite","Eruda • xterm • CyberChef • Linux • прокси","›",()->devSuitePanel());item(c,"◈","DevSuite Security","Кодирование • диагностика • расширения","›",this::securityCenter);item(c,"◈","VPN • WireGuard",vpn.active()?"Туннель включён":"Отключён","›",()->vpnPanel());item(c,"◈","Конфиденциальность","Cookies, история, реклама и трекеры","›",()->privacy());item(c,"◈","AdBlock Pro","uBlock Origin • управление фильтрами","›",this::adBlockPanel);item(c,"◎","DNS Manager","Системный DNS / DNS-over-HTTPS","›",this::dnsPanel);item(c,"✧","Расширения и скрипты","GeckoView • XPI / JS","›",()->addonManage());item(c,"◎","Tor Engine","Встроенный клиент • текстовый просмотр .onion","›",()->openTor(""));section(c,"ФАЙЛЫ И ДАННЫЕ");item(c,"▤","Backup Center","Зашифрованный экспорт и восстановление","›",this::backupPanel);item(c,"↓","Загрузки","Менеджер файлов","›",()->downloadPanel());item(c,"▤","File & Document Center","Папки • архивы • PDF • текст • HEX","›",()->startActivity(new Intent(this,FileCenterActivity.class)));item(c,"▤","Offline Browser","Снимки страниц • библиотека • режим чтения","›",this::offlinePanel);item(c,"⚙","Download Accelerator","Очередь и число параллельных скачиваний","›",this::downloadSettings);item(c,"▶","Media Center Pro","Локальные файлы • PiP • плейлист • EQ","›",()->startActivity(new Intent(this,MediaCenterActivity.class)));item(c,"×","Очистить данные","История и данные сайтов","›",()->clearData());section(c,"О ПРИЛОЖЕНИИ");item(c,"↻","Обновление браузера","Локальный дельта-патч .aeb","›",()->updatePanel());item(c,"⚡","AetherBolt Browser","0.9.6 Alpha • GeckoView 161","›",()->notice("AetherBolt","Beyond the Limits. GeckoView • XPI. Tor Engine — экспериментальный текстовый просмотр; не полноценный Tor Browser."));}
     private void clearData(){history.clear();closedPages.clear();for(Tab t:tabs)t.preview=null;prefs.edit().remove("workspaceTabs").remove("workspaceActive").apply();writeList("history",history);notice("История очищена","Данные сайтов Gecko не удалены; отдельный механизм ещё не перенесён.");}
 
     private void readList(String key,ArrayList<String> out){try{JSONArray a=new JSONArray(prefs.getString(key,"[]"));for(int i=0;i<a.length();i++)out.add(a.getString(i));}catch(JSONException ignored){}}

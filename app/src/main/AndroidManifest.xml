@@ -5,6 +5,7 @@
     <application android:label="AetherBolt" android:icon="@mipmap/aether_launcher" android:roundIcon="@mipmap/aether_launcher" android:theme="@style/AppTheme" android:allowBackup="false" android:usesCleartextTraffic="true">
         <provider android:name="androidx.core.content.FileProvider" android:authorities="${applicationId}.updates" android:exported="false" android:grantUriPermissions="true"><meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/update_paths"/></provider>
         <service android:name="org.torproject.jni.TorService" android:exported="false" />
+        <activity android:name=".HttpLabActivity" android:exported="false" android:configChanges="orientation|screenSize|keyboardHidden" android:windowSoftInputMode="adjustResize" />
         <activity android:name=".AiCenterActivity" android:exported="false" android:configChanges="orientation|screenSize|keyboardHidden" android:windowSoftInputMode="adjustResize" />
         <activity android:name=".BackupCenterActivity" android:exported="false" android:configChanges="orientation|screenSize|keyboardHidden" android:windowSoftInputMode="adjustResize" />
         <activity android:name=".OfflineLibraryActivity" android:exported="false" android:configChanges="orientation|screenSize|keyboardHidden" />
