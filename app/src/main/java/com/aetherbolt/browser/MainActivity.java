@@ -128,6 +128,7 @@ public class MainActivity extends Activity {
     private BoltVpn vpn; private static GeckoRuntime runtime; private WebExtensionController extensions; private WebExtension scriptBridge; private final ArrayList<Tab> tabs=new ArrayList<>(); private int active=0;
     private static class Tab { WebExtension extensionOwner; Tab opener; GeckoView web; GeckoSession session; String url="", pendingUrl=""; boolean canBack,canForward,webActive=false,logicalActive=false,awaitingOpen,addonPopupTab,crashed; boolean home=true; String title="Новая вкладка"; int progress=0; final HashSet<String> executed=new HashSet<>(); android.graphics.Bitmap preview, favicon; }
     private final ArrayList<String> bookmarks=new ArrayList<>(), history=new ArrayList<>();
+    private JSONObject historyInfo=new JSONObject();
     private String engineName="Google", engineTemplate=Router.ENGINES[0][1];
     private volatile boolean filter=true, tracker=true; private boolean js=true, images=true, desktop=false, historyEnabled=true, thirdParty=false, autoplay=false, darkPages=false, zoom=true; private String appearance="Космос"; private final ArrayList<String> downloads=new ArrayList<>();
     @Override public void onCreate(Bundle state) {
@@ -136,7 +137,7 @@ public class MainActivity extends Activity {
         getWindow().setStatusBarColor(BG); getWindow().setNavigationBarColor(BG);
         prefs=getSharedPreferences("aetherbolt", MODE_PRIVATE);
         engineName=prefs.getString("engineName", "Google"); engineTemplate=prefs.getString("engineTemplate", Router.ENGINES[0][1]); filter=prefs.getBoolean("filter", true);
-        readList("bookmarks",bookmarks); readList("history",history); readList("downloads",downloads); loadOptions(); loadScripts();
+        readList("bookmarks",bookmarks); readList("history",history);try{historyInfo=new JSONObject(prefs.getString("historyInfo","{}"));}catch(JSONException ignored){} readList("downloads",downloads); loadOptions(); loadScripts();
         boolean cold=runtime==null;
         transfers=new FileTransfers(this);build();
         if(cold){
@@ -267,7 +268,7 @@ public class MainActivity extends Activity {
         String[] names={"Google","DuckDuckGo","Bing","Brave Search","Qwant","Яндекс","Ahmia","Добавить"};String[] icons={"G","D","b","B","Q","Я","◎","+"};int[] colors={0xff79aaff,0xffff9c50,CYAN,0xffff855d,PURPLE,0xffff7d8a,0xffc69cff,TEXT};Runnable[] actions=new Runnable[8];for(int i=0;i<6;i++){final int n=i;actions[i]=()->setEngine(Router.ENGINES[n][0],Router.ENGINES[n][1]);}actions[6]=()->setEngine(Router.ENGINES[10][0],Router.ENGINES[10][1]);actions[7]=()->customEngine();
         int cols=getResources().getConfiguration().screenWidthDp>=720?8:4;grid(box,names,icons,colors,actions,cols);
         grid(box,new String[]{"Дополнения","Загрузки","Закладки","История","Настройки","Вкладки"},new String[]{"✧","↓","☆","◷","⚙","▣"},new int[]{PURPLE,CYAN},new Runnable[]{()->quickAddons(),()->downloadPanel(),()->listDialog("Закладки",bookmarks,"bookmarks"),()->listDialog("История",history,"history"),()->settings(),()->tabDialog()},getResources().getConfiguration().screenWidthDp>=650?6:3);
-        TextView note=label("GECKO ALPHA 0.9.7.1   •   Tor Engine • эксперимент",11,MUTED);note.setGravity(Gravity.CENTER);add(box,note,-1,28);return sc;
+        TextView note=label("GECKO ALPHA 0.9.7.2   •   Tor Engine • эксперимент",11,MUTED);note.setGravity(Gravity.CENTER);add(box,note,-1,28);return sc;
     }
 
     private android.graphics.drawable.Drawable ripple(int color,int radius,int stroke){return new android.graphics.drawable.RippleDrawable(android.content.res.ColorStateList.valueOf(0x337f8cff),shape(color,radius,stroke),null);}
@@ -277,15 +278,17 @@ public class MainActivity extends Activity {
     private LinearLayout panel(String title,String subtitle,boolean sheet){
         suspendPanel(title);panelTitle=title;((InputMethodManager)getSystemService(INPUT_METHOD_SERVICE)).hideSoftInputFromWindow(address.getWindowToken(),0);address.clearFocus();
         overlay=new FrameLayout(this);overlay.setBackgroundColor(sheet?0xa0050916:BG);shell.addView(overlay,new FrameLayout.LayoutParams(-1,-1));overlay.setOnClickListener(v->panelBack());
-        LinearLayout card=column();card.setClickable(true);card.setPadding(dp(16),dp(14),dp(16),dp(14));card.setBackground(sheet?glass(26,0xff6552a3):glass(0,0));
+        boolean anchored=sheet&&(title.equals("Расширения")||title.equals("AetherBolt")||title.equals("DevSuite"));
+        LinearLayout card=column();card.setClickable(true);card.setPadding(dp(anchored?10:16),dp(anchored?8:14),dp(anchored?10:16),dp(anchored?8:14));card.setBackground(sheet?glass(anchored?20:26,0xff6552a3):glass(0,0));
         FrameLayout.LayoutParams cp=new FrameLayout.LayoutParams(-1,sheet?-2:-1,sheet?Gravity.BOTTOM|Gravity.CENTER_HORIZONTAL:Gravity.CENTER);
-        if(sheet){cp.width=Math.min(getResources().getDisplayMetrics().widthPixels-dp(20),dp(620));cp.bottomMargin=dp(12);if(title.equals("Расширения")||title.equals("AetherBolt")){cp.gravity=Gravity.TOP|Gravity.END;cp.width=Math.min(cp.width,dp(420));cp.topMargin=toolBar.getBottom()+dp(4);cp.rightMargin=dp(8);cp.bottomMargin=0;cp.height=Math.min(dp(780),Math.max(dp(180),shell.getHeight()-cp.topMargin-dp(20)));}}
+        if(sheet){cp.width=Math.max(dp(180),Math.min(shell.getWidth()-dp(20),dp(620)));cp.bottomMargin=dp(12);if(anchored){cp.gravity=Gravity.TOP|Gravity.END;cp.width=Math.min(cp.width,dp(420));cp.topMargin=toolBar.getBottom()+dp(4);cp.rightMargin=dp(8);cp.bottomMargin=0;cp.height=Math.min(dp(820),Math.max(dp(150),shell.getHeight()-cp.topMargin-dp(12)));}}
         overlay.addView(card,cp);if(!sheet){card.setPadding(dp(16),dp(14),dp(16),dp(14));}
-        if(sheet){View grip=new View(this);grip.setBackground(shape(0xff53607c,3,0));LinearLayout.LayoutParams gp=new LinearLayout.LayoutParams(dp(42),dp(4));gp.gravity=Gravity.CENTER_HORIZONTAL;gp.bottomMargin=dp(12);card.addView(grip,gp);}
+        if(sheet&&!anchored){View grip=new View(this);grip.setBackground(shape(0xff53607c,3,0));LinearLayout.LayoutParams gp=new LinearLayout.LayoutParams(dp(42),dp(4));gp.gravity=Gravity.CENTER_HORIZONTAL;gp.bottomMargin=dp(12);card.addView(grip,gp);}
         LinearLayout head=row();add(head,button("‹","Назад",()->panelBack()),44,44);LinearLayout words=column();words.setPadding(dp(10),0,0,0);TextView name=label(title,23,TEXT);name.setTypeface(Typeface.DEFAULT,Typeface.BOLD);words.addView(name);if(!subtitle.isEmpty())words.addView(label(subtitle,12,MUTED));head.addView(words,new LinearLayout.LayoutParams(0,-2,1));ImageView mark=new ImageView(this);mark.setImageResource(R.drawable.bolt);add(head,mark,36,36);card.addView(head);View divider=new View(this);divider.setBackground(new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT,new int[]{0x0053ddfb,0xff6655bd,0x0053ddfb}));card.addView(divider,new LinearLayout.LayoutParams(-1,dp(1)));
         ScrollView scroll=new ScrollView(this);scroll.setVerticalScrollBarEnabled(false);LinearLayout content=column();content.setPadding(0,dp(12),0,dp(10));scroll.addView(content,new ScrollView.LayoutParams(-1,-2));
-        card.addView(scroll,sheet?new LinearLayout.LayoutParams(-1,Math.min(dp(430),getResources().getDisplayMetrics().heightPixels/2)):new LinearLayout.LayoutParams(-1,0,1));
-        card.setTranslationY(dp(14));card.setAlpha(.5f);card.animate().translationY(0).alpha(1).setDuration(190).start();return content;
+        card.addView(scroll,sheet&&!anchored?new LinearLayout.LayoutParams(-1,Math.min(dp(430),getResources().getDisplayMetrics().heightPixels/2)):new LinearLayout.LayoutParams(-1,0,1));
+        if(anchored){scroll.setVerticalScrollBarEnabled(true);card.setElevation(dp(8));}
+        if(!anchored){card.setTranslationY(dp(8));card.setAlpha(.8f);card.animate().translationY(0).alpha(1).setDuration(120).start();}return content;
     }
     private void section(LinearLayout c,String title){TextView t=label(title,12,PURPLE);t.setTypeface(Typeface.DEFAULT,Typeface.BOLD);t.setPadding(dp(8),dp(15),0,dp(7));c.addView(t);}
     private TextView badge(String symbol,int color){TextView b=label("",20,color);b.setGravity(Gravity.CENTER);b.setCompoundDrawables(null,icon(symbol,color,25),null,null);b.setPadding(0,dp(7),0,0);b.setBackground(glass(13,0xff424673));return b;}
@@ -762,14 +765,14 @@ public class MainActivity extends Activity {
         @Override public void onCanGoBack(GeckoSession session,boolean value){t.canBack=value;}
         @Override public void onCanGoForward(GeckoSession session,boolean value){t.canForward=value;}
     });t.session.setProgressDelegate(new GeckoSession.ProgressDelegate(){
-        @Override public void onPageStart(GeckoSession session,String url){if(!tabs.contains(t)||t.session!=session)return;if(fullscreenTab==t)leaveFullscreen();t.awaitingOpen=false;setSessionActive(t,t==current()&&!t.home,t==addonContext()&&!t.home);t.progress=1;t.url=url;updateProgress(t);}
+        @Override public void onPageStart(GeckoSession session,String url){if(!tabs.contains(t)||t.session!=session)return;if(fullscreenTab==t)leaveFullscreen();t.awaitingOpen=false;setSessionActive(t,t==current()&&!t.home,t==addonContext()&&!t.home);t.progress=1;if(!Objects.equals(t.url,url)){String host=Uri.parse(url).getHost();t.title=host==null?"Загрузка…":host;}t.url=url;updateProgress(t);}
         @Override public void onProgressChange(GeckoSession session,int value){t.progress=value;updateProgress(t);}
-        @Override public void onPageStop(GeckoSession session,boolean success){if(!tabs.contains(t)||t.session!=session)return;t.progress=100;updateProgress(t);if(success&&!clearingData&&historyEnabled&&t.extensionOwner==null&&Router.parse(t.url).kind==Router.Kind.WEB)remember(history,"history",t.url,200);}
+        @Override public void onPageStop(GeckoSession session,boolean success){if(!tabs.contains(t)||t.session!=session)return;t.progress=100;updateProgress(t);if(success&&!clearingData&&historyEnabled&&t.extensionOwner==null&&Router.parse(t.url).kind==Router.Kind.WEB)rememberVisit(t);}
     });t.session.setContentDelegate(new GeckoSession.ContentDelegate(){
         @Override public void onCrash(GeckoSession session){chromeHandler.post(()->recoverSession(t,session));}
         @Override public void onKill(GeckoSession session){chromeHandler.post(()->recoverSession(t,session));}
         @Override public void onFullScreen(GeckoSession session,boolean fullScreen){fullscreenChanged(t,fullScreen);}
-        @Override public void onTitleChange(GeckoSession session,String title){if(title!=null&&!title.isEmpty()&&!title.equals(t.title)){t.title=title;if(tabs.contains(t))scheduleTitleUpdate();}}
+        @Override public void onTitleChange(GeckoSession session,String title){if(title!=null&&!title.isEmpty()&&!title.equals(t.title)){t.title=title;if(tabs.contains(t)){scheduleTitleUpdate();if(historyEnabled&&!clearingData&&t.progress==100&&t.extensionOwner==null&&history.contains(t.url)){JSONObject entry=historyInfo.optJSONObject(t.url);if(entry!=null)try{entry.put("title",title.substring(0,Math.min(512,title.length())));writeList("history",history);}catch(JSONException ignored){}}}}}
         @Override public void onExternalResponse(GeckoSession session,WebResponse response){saveGeckoDownload(response);}
     });}
 
@@ -1060,10 +1063,10 @@ public class MainActivity extends Activity {
     @Override protected void onStop(){if(videoSuspend)for(Tab t:tabs)setSessionActive(t,false,false);super.onStop();}
     @Override protected void onStart(){super.onStart();if(prefs!=null)applyVideoPower();if(!tabs.isEmpty()){Tab t=current(),logical=addonContext();for(Tab other:tabs)setSessionActive(other,other==t&&!t.home&&!t.crashed,other==logical&&!logical.home);}}
     private void compactItem(LinearLayout c,String symbol,String title,Runnable action){
-        LinearLayout r=row();r.setGravity(Gravity.CENTER_VERTICAL);r.setPadding(dp(10),0,dp(10),0);r.setBackground(ripple(PANEL,10,0xff303856));
-        ImageView image=new ImageView(this);image.setImageDrawable(icon(symbol,CYAN,20));add(r,image,28,28);
+        LinearLayout r=row();r.setGravity(Gravity.CENTER_VERTICAL);r.setPadding(dp(10),0,dp(10),0);r.setBackground(glassRipple(12,0xff39416a));
+        TextView image=badge(symbol,CYAN);add(r,image,34,34);
         TextView name=label(title,15,TEXT);name.setGravity(Gravity.CENTER_VERTICAL);name.setPadding(dp(8),0,0,0);r.addView(name,new LinearLayout.LayoutParams(0,-1,1));
-        r.setMinimumHeight(dp(48));r.setContentDescription(title);r.setOnClickListener(v->action.run());r.setFocusable(true);add(c,r,-1,48);
+        r.setMinimumHeight(dp(48));r.setContentDescription(title);r.setOnClickListener(v->action.run());r.setFocusable(true);LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,dp(48));lp.setMargins(dp(2),dp(2),dp(2),dp(2));c.addView(r,lp);
     }
     private void menu(){
         LinearLayout c=panel("AetherBolt","Быстрый доступ",true);
@@ -1301,7 +1304,7 @@ public class MainActivity extends Activity {
         };
         search.addTextChangedListener(new android.text.TextWatcher(){public void beforeTextChanged(CharSequence s,int a,int n,int f){}public void onTextChanged(CharSequence s,int a,int b,int n){render.run();}public void afterTextChanged(android.text.Editable e){}});render.run();
     }
-    private void allSettings(){LinearLayout c=panel("Все настройки","Управление AetherBolt Browser",false);section(c,"ПЕРСОНАЛИЗАЦИЯ");item(c,"⌕","Поисковая система",engineName,"›",()->engineDialog());item(c,"◎","Язык результатов",searchLanguageName()+" • "+SearchLanguage.support(engineTemplate),"›",()->searchLanguages());item(c,"✧","Внешний вид",appearance,"›",()->themes());item(c,"▣","Настройки сайтов","JavaScript, изображения, ПК, масштаб, медиа","›",()->webOptions());section(c,"ПРОИЗВОДИТЕЛЬНОСТЬ");item(c,"◎","Performance Center","Профили • память • батарея • трафик • вкладки","›",this::performanceCenter);item(c,"▶","Видео и производительность","Настройка нагрузки на планшет • диагностика","›",this::videoSettings);section(c,"БЕЗОПАСНОСТЬ И МОДУЛИ");item(c,"▣","Module Manager","Локальные инструменты • управление запуском","›",this::moduleManager);item(c,"✧","AI Center","GPT • ChatGPT Web • совместимые серверы","›",this::aiPanel);item(c,"◈","Password Vault","Локальное шифрованное хранилище","›",()->startActivity(new Intent(this,PasswordVaultActivity.class)));item(c,">_","DevSuite","Eruda • xterm • CyberChef • Linux • прокси","›",()->devSuitePanel());item(c,"◈","DevSuite Security","Кодирование • диагностика • расширения","›",this::securityCenter);item(c,"◈","VPN • WireGuard",vpn.active()?"Туннель включён":"Отключён","›",()->vpnPanel());item(c,"◈","Конфиденциальность","Cookies, история, реклама и трекеры","›",()->privacy());item(c,"◈","AdBlock Pro","uBlock Origin • управление фильтрами","›",this::adBlockPanel);item(c,"◎","DNS Manager","Системный DNS / DNS-over-HTTPS","›",this::dnsPanel);item(c,"✧","Расширения и скрипты","GeckoView • XPI / JS","›",()->addonManage());item(c,"◎","Tor Engine","Встроенный клиент • текстовый просмотр .onion","›",()->openTor(""));section(c,"ФАЙЛЫ И ДАННЫЕ");item(c,"▤","Backup Center","Зашифрованный экспорт и восстановление","›",this::backupPanel);item(c,"↓","Загрузки","Менеджер файлов","›",()->downloadPanel());item(c,"▤","File & Document Center","Папки • архивы • PDF • текст • HEX","›",()->startActivity(new Intent(this,FileCenterActivity.class)));item(c,"▤","Offline Browser","Снимки страниц • библиотека • режим чтения","›",this::offlinePanel);item(c,"⚙","Download Accelerator","Очередь и число параллельных скачиваний","›",this::downloadSettings);item(c,"▶","Media Center Pro","Локальные файлы • PiP • плейлист • EQ","›",()->startActivity(new Intent(this,MediaCenterActivity.class)));item(c,"×","Очистить данные","Кэш, история и cookies","›",()->clearData());section(c,"О ПРИЛОЖЕНИИ");item(c,"↻","Обновление браузера","Локальный дельта-патч .aeb","›",()->updatePanel());item(c,"⚡","AetherBolt Browser","0.9.7.1 Alpha • GeckoView 161","›",()->notice("AetherBolt","Beyond the Limits. GeckoView • XPI. Tor Engine — экспериментальный текстовый просмотр; не полноценный Tor Browser."));}
+    private void allSettings(){LinearLayout c=panel("Все настройки","Управление AetherBolt Browser",false);section(c,"ПЕРСОНАЛИЗАЦИЯ");item(c,"⌕","Поисковая система",engineName,"›",()->engineDialog());item(c,"◎","Язык результатов",searchLanguageName()+" • "+SearchLanguage.support(engineTemplate),"›",()->searchLanguages());item(c,"✧","Внешний вид",appearance,"›",()->themes());item(c,"▣","Настройки сайтов","JavaScript, изображения, ПК, масштаб, медиа","›",()->webOptions());section(c,"ПРОИЗВОДИТЕЛЬНОСТЬ");item(c,"◎","Performance Center","Профили • память • батарея • трафик • вкладки","›",this::performanceCenter);item(c,"▶","Видео и производительность","Настройка нагрузки на планшет • диагностика","›",this::videoSettings);section(c,"БЕЗОПАСНОСТЬ И МОДУЛИ");item(c,"▣","Module Manager","Локальные инструменты • управление запуском","›",this::moduleManager);item(c,"✧","AI Center","GPT • ChatGPT Web • совместимые серверы","›",this::aiPanel);item(c,"◈","Password Vault","Локальное шифрованное хранилище","›",()->startActivity(new Intent(this,PasswordVaultActivity.class)));item(c,">_","DevSuite","Eruda • xterm • CyberChef • Linux • прокси","›",()->devSuitePanel());item(c,"◈","DevSuite Security","Кодирование • диагностика • расширения","›",this::securityCenter);item(c,"◈","VPN • WireGuard",vpn.active()?"Туннель включён":"Отключён","›",()->vpnPanel());item(c,"◈","Конфиденциальность","Cookies, история, реклама и трекеры","›",()->privacy());item(c,"◈","AdBlock Pro","uBlock Origin • управление фильтрами","›",this::adBlockPanel);item(c,"◎","DNS Manager","Системный DNS / DNS-over-HTTPS","›",this::dnsPanel);item(c,"✧","Расширения и скрипты","GeckoView • XPI / JS","›",()->addonManage());item(c,"◎","Tor Engine","Встроенный клиент • текстовый просмотр .onion","›",()->openTor(""));section(c,"ФАЙЛЫ И ДАННЫЕ");item(c,"▤","Backup Center","Зашифрованный экспорт и восстановление","›",this::backupPanel);item(c,"↓","Загрузки","Менеджер файлов","›",()->downloadPanel());item(c,"▤","File & Document Center","Папки • архивы • PDF • текст • HEX","›",()->startActivity(new Intent(this,FileCenterActivity.class)));item(c,"▤","Offline Browser","Снимки страниц • библиотека • режим чтения","›",this::offlinePanel);item(c,"⚙","Download Accelerator","Очередь и число параллельных скачиваний","›",this::downloadSettings);item(c,"▶","Media Center Pro","Локальные файлы • PiP • плейлист • EQ","›",()->startActivity(new Intent(this,MediaCenterActivity.class)));item(c,"×","Очистить данные","Кэш, история и cookies","›",()->clearData());section(c,"О ПРИЛОЖЕНИИ");item(c,"↻","Обновление браузера","Локальный дельта-патч .aeb","›",()->updatePanel());item(c,"⚡","AetherBolt Browser","0.9.7.2 Alpha • GeckoView 161","›",()->notice("AetherBolt","Beyond the Limits. GeckoView • XPI. Tor Engine — экспериментальный текстовый просмотр; не полноценный Tor Browser."));}
     private void clearData(){
         if(clearingData){toast("Очистка уже выполняется");return;}
         LinearLayout c=panel("Очистка данных","История • кэш • данные сайтов",false);
@@ -1318,7 +1321,7 @@ public class MainActivity extends Activity {
     private void performClear(boolean clearHistory,long flags,boolean close){
         if(clearingData)return;if(close&&transfers.activeCount()>0){toast("Сначала завершите скачивания");return;}
         clearingData=true;historyGeneration++;pendingAddon=null;updatePinned();
-        if(clearHistory){history.clear();closedPages.clear();for(Tab t:tabs){t.preview=null;if(t.session!=null&&t.session.isOpen())t.session.purgeHistory();t.canBack=false;t.canForward=false;}prefs.edit().remove("workspaceTabs").remove("workspaceActive").remove("backupRecoveredTabs").apply();writeList("history",history);}
+        if(clearHistory){history.clear();historyInfo=new JSONObject();closedPages.clear();for(Tab t:tabs){t.preview=null;if(t.session!=null&&t.session.isOpen())t.session.purgeHistory();t.canBack=false;t.canForward=false;}prefs.edit().remove("workspaceTabs").remove("workspaceActive").remove("backupRecoveredTabs").apply();writeList("history",history);}
         if(close){
             if(fullscreenUi)leaveFullscreen();for(Tab t:new ArrayList<>(tabs)){if(t.session!=null){transfers.cancelUpload(t.session);sessionActions.remove(t.session);if(devSuite!=null)devSuite.detach(t.session);t.web.releaseSession();t.session.close();}}
             tabs.clear();body.removeAllViews();shownTab=null;active=0;createTab();showTab();closedPages.clear();prefs.edit().remove("workspaceTabs").remove("workspaceActive").apply();
@@ -1330,7 +1333,16 @@ public class MainActivity extends Activity {
     }
 
     private void readList(String key,ArrayList<String> out){try{JSONArray a=new JSONArray(prefs.getString(key,"[]"));for(int i=0;i<a.length();i++)out.add(a.getString(i));}catch(JSONException ignored){}}
-    private void writeList(String key,ArrayList<String> data){prefs.edit().putString(key,new JSONArray(data).toString()).apply();}
+    private void writeList(String key,ArrayList<String> data){
+        android.content.SharedPreferences.Editor edit=prefs.edit().putString(key,new JSONArray(data).toString());
+        if("history".equals(key)){JSONObject pruned=new JSONObject();for(String url:data){JSONObject entry=historyInfo.optJSONObject(url);if(entry!=null)try{pruned.put(url,entry);}catch(JSONException ignored){}}historyInfo=pruned;edit.putString("historyInfo",pruned.toString());}
+        edit.apply();
+    }
+    private void rememberVisit(Tab t){
+        if(t.url==null||t.url.length()>8192)return;
+        try{String title=t.title==null?"":t.title;historyInfo.put(t.url,new JSONObject().put("title",title.substring(0,Math.min(512,title.length()))).put("date",System.currentTimeMillis()));}catch(JSONException ignored){}
+        remember(history,"history",t.url,200);
+    }
     private void remember(ArrayList<String> data,String key,String url,int cap){data.remove(url);data.add(0,url);while(data.size()>cap)data.remove(data.size()-1);writeList(key,data);}
     private void saveBookmark(){Tab t=current();String u=t.url;if(t.home||u==null||Router.parse(u).kind!=Router.Kind.WEB){toast("Сначала откройте сайт");return;}remember(bookmarks,"bookmarks",u,200);toast("Закладка сохранена");}
     private void listDialog(String title,ArrayList<String> data,String key){
@@ -1339,17 +1351,24 @@ public class MainActivity extends Activity {
         if(isHistory)compactItem(c,"×","Очистить историю и кэш",this::clearData);
         else compactItem(c,"×","Очистить закладки",()->new AlertDialog.Builder(this).setTitle("Удалить все закладки?").setNegativeButton("Отмена",null).setPositiveButton("Удалить",(d,w)->{data.clear();writeList(key,data);listDialog(title,data,key);}).show());
         TextView count=label("",13,MUTED);c.addView(count);LinearLayout records=column();c.addView(records);
-        Runnable render=()->{records.removeAllViews();String q=search.getText().toString().trim().toLowerCase(Locale.ROOT);int shown=0;
+        Runnable render=()->{records.removeAllViews();String q=search.getText().toString().trim().toLowerCase(Locale.ROOT);int shown=0;String lastGroup="";
             for(String u:new ArrayList<>(data)){
-                if(!u.toLowerCase(Locale.ROOT).contains(q))continue;
+                JSONObject info=isHistory?historyInfo.optJSONObject(u):null;String savedTitle=info==null?"":info.optString("title","");
+                if(!(u+" "+savedTitle).toLowerCase(Locale.ROOT).contains(q))continue;
+                if(isHistory){long date=info==null?0:info.optLong("date",0);String group=date>0?new java.text.SimpleDateFormat("dd MMMM yyyy",Locale.getDefault()).format(new Date(date)):"Старые записи • без даты";if(!group.equals(lastGroup)){section(records,group);lastGroup=group;}}
                 LinearLayout line=row();line.setGravity(Gravity.CENTER_VERTICAL);line.setBackground(ripple(PANEL,12,0xff303856));LinearLayout words=column();words.setPadding(dp(10),dp(8),dp(4),dp(8));
-                String host=Uri.parse(u).getHost();TextView name=label(host==null?u:host,15,TEXT);name.setMaxLines(1);name.setEllipsize(android.text.TextUtils.TruncateAt.END);words.addView(name);
+                String host=Uri.parse(u).getHost();TextView name=label(savedTitle.isEmpty()?(host==null?u:host):savedTitle,15,TEXT);name.setMaxLines(1);name.setEllipsize(android.text.TextUtils.TruncateAt.END);words.addView(name);
                 TextView url=label(u,12,MUTED);url.setMaxLines(2);url.setEllipsize(android.text.TextUtils.TruncateAt.END);words.addView(url);line.addView(words,new LinearLayout.LayoutParams(0,-2,1));
-                words.setOnClickListener(v->{dismissPanel();navigate(u);});add(line,button("×","Удалить запись",()->{data.remove(u);writeList(key,data);records.removeView(line);count.setText("Всего записей: "+data.size());}),44,44);add(records,line,-1,-2);shown++;
+                words.setOnClickListener(v->{dismissPanel();navigate(u);});add(line,button("×","Удалить запись",()->{data.remove(u);writeList(key,data);renderHistoryRows(records,line,count,data);}),44,44);add(records,line,-1,-2);shown++;
             }
             count.setText("Найдено: "+shown+" • всего: "+data.size());if(shown==0)records.addView(label("Нет записей",15,MUTED));
         };
         search.addTextChangedListener(new android.text.TextWatcher(){public void beforeTextChanged(CharSequence s,int a,int n,int f){}public void onTextChanged(CharSequence s,int a,int b,int n){render.run();}public void afterTextChanged(android.text.Editable e){}});render.run();
+    }
+    private void renderHistoryRows(LinearLayout records,View line,TextView count,ArrayList<String> data){
+        int index=records.indexOfChild(line);records.removeView(line);
+        if(index>0&&records.getChildAt(index-1) instanceof TextView&&(index>=records.getChildCount()||records.getChildAt(index) instanceof TextView))records.removeViewAt(index-1);
+        count.setText("Всего записей: "+data.size());if(records.getChildCount()==0)records.addView(label("Нет записей",15,MUTED));
     }
     @Override public void onConfigurationChanged(android.content.res.Configuration c){super.onConfigurationChanged(c);updateChrome();if(!fullscreenUi&&!tabs.isEmpty())showTab();else shell.requestApplyInsets();}
     @Override protected void onDestroy(){if(fullscreenUi)leaveFullscreen();chromeHandler.removeCallbacksAndMessages(null);if(transfers!=null)transfers.destroy();if(devSuite!=null)devSuite.stop();if(addonPopup!=null)addonPopup.dismiss();for(WebExtension e:registeredAddons.values()){e.setActionDelegate(null);e.setTabDelegate(null);}if(body!=null)body.removeAllViews();for(Tab t:tabs){if(t.session!=null){t.web.releaseSession();t.session.close();}}super.onDestroy();}
