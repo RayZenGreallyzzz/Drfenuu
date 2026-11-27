@@ -105,4 +105,16 @@ public final class ScriptImport {
         if(matches!=1)throw new IOException("XPI не найден");
         output.flush();
     }
+    /** Stream to private staging, rejecting empty files and oversized input before installation. */
+    public static long copyBounded(InputStream in,OutputStream out,long limit)throws IOException{
+        if(in==null||out==null||limit<1)throw new IOException("Файл недоступен");
+        byte[] buf=new byte[8192];long size=0;int n;
+        while((n=in.read(buf))!=-1){
+            if(n==0)continue;
+            if(n>limit-size)throw new IOException("Превышен допустимый размер файла");
+            out.write(buf,0,n);size+=n;
+        }
+        if(size==0)throw new IOException("Пустой файл");
+        out.flush();return size;
+    }
 }

@@ -1,0 +1,2 @@
+# 0.9.7.9 Add-on stability
+Single active extension installation; staging with byte bounds and empty-file rejection; temporary XPI cleanup on completion/failure; normal cancellation; refresh delegates for replaced extension objects. Existing signature checks and site protections unchanged. Does not add CRX execution or missing browser APIs. Requires on-device verification.

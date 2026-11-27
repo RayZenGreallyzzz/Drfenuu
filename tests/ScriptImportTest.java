@@ -28,6 +28,11 @@ public class ScriptImportTest {
   ByteArrayOutputStream chosen=new ByteArrayOutputStream();ScriptImport.copyPackage(new ByteArrayInputStream(wrapped.toByteArray()),"release/one.xpi",chosen);t(java.util.Arrays.equals(chosen.toByteArray(),new byte[]{1,2,3}));
   t(zip("__MACOSX/a.js","a.js").scripts.size()==1);
   t(ScriptImport.read(new ByteArrayInputStream("alert(1)".getBytes(StandardCharsets.UTF_8)),"test.user.js").kind==ScriptImport.Kind.SCRIPTS);
-  System.out.println("PASS: script import classification");
+  ByteArrayOutputStream bounded=new ByteArrayOutputStream();
+  t(ScriptImport.copyBounded(new ByteArrayInputStream(new byte[]{4,5}),bounded,2)==2);
+  t(java.util.Arrays.equals(bounded.toByteArray(),new byte[]{4,5}));
+  try{ScriptImport.copyBounded(new ByteArrayInputStream(new byte[3]),new ByteArrayOutputStream(),2);throw new AssertionError("oversize accepted");}catch(IOException expected){}
+  try{ScriptImport.copyBounded(new ByteArrayInputStream(new byte[0]),new ByteArrayOutputStream(),2);throw new AssertionError("empty accepted");}catch(IOException expected){}
+  System.out.println("PASS: script import classification and staging");
  }
 }
