@@ -20,6 +20,16 @@ public class MainActivity extends Activity {
     private static final int BG=0xff0b1020, PANEL=0xff171e35, TEXT=0xffedf2ff, MUTED=0xffa5b1ce, PURPLE=0xffa78bfa, CYAN=0xff53ddfb;
     private LinearLayout root, tabsBar, toolBar; private FrameLayout body; private EditText address;
     private HorizontalScrollView tabStrip;
+    private ScrollView sideStrip;
+    private LinearLayout sideTabs;
+    private TextView quickTools;
+    private boolean sideEnabled(){return prefs!=null&&prefs.getBoolean("sideTabs",false)&&getResources().getConfiguration().screenWidthDp>=840&&!fullscreenUi;}
+    private void updateChrome(){
+        if(tabStrip==null||sideStrip==null)return;
+        boolean side=sideEnabled();sideStrip.setVisibility(side?View.VISIBLE:View.GONE);
+        tabStrip.setVisibility(!fullscreenUi&&!side&&getResources().getConfiguration().screenWidthDp>=600?View.VISIBLE:View.GONE);
+        if(quickTools!=null)quickTools.setVisibility(prefs.getBoolean("advancedToolbar",false)?View.VISIBLE:View.GONE);
+    }
     private AetherStartupView startup;
     private long startupStart;
     private LinearLayout bottomBar;
@@ -44,7 +54,7 @@ public class MainActivity extends Activity {
         }else if(!fullscreenKeptScreenOn)window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         toolBar.setVisibility(enabled?View.GONE:View.VISIBLE);
         bottomBar.setVisibility(enabled?View.GONE:View.VISIBLE);
-        tabStrip.setVisibility(!enabled&&getResources().getConfiguration().screenWidthDp>=600?View.VISIBLE:View.GONE);
+        updateChrome();if(!enabled&&!tabs.isEmpty())refreshTabs();
         if(enabled)progress.setVisibility(View.GONE);
         else if(!tabs.isEmpty()){updateProgress(current());scheduleTitleUpdate();}
         if(Build.VERSION.SDK_INT>=30){
@@ -172,12 +182,14 @@ public class MainActivity extends Activity {
         address=new EditText(this);address.setSingleLine(true);address.setTextSize(15);address.setTextColor(TEXT);address.setHintTextColor(MUTED);address.setHint("Введите запрос или адрес");address.setInputType(android.text.InputType.TYPE_CLASS_TEXT|android.text.InputType.TYPE_TEXT_VARIATION_URI);address.setImeOptions(EditorInfo.IME_ACTION_GO);address.setSelectAllOnFocus(true);address.setPadding(dp(14),0,dp(14),0);address.setBackground(shape(PANEL,23,PURPLE));
         LinearLayout.LayoutParams a=new LinearLayout.LayoutParams(0,dp(46),1);a.setMargins(dp(3),0,dp(3),0);toolBar.addView(address,a);
         address.setOnEditorActionListener((v,id,event)->{if(id==EditorInfo.IME_ACTION_GO||(event!=null&&event.getKeyCode()==KeyEvent.KEYCODE_ENTER&&event.getAction()==KeyEvent.ACTION_DOWN)){navigate(address.getText().toString());return true;}return false;});
-        add(toolBar,button("↻","Обновить",()->{if(!current().home&&current().session!=null)current().session.reload();}),44,44);add(toolBar,button(">_","DevSuite",()->devSuitePanel()),44,44);root.addView(toolBar);
+        add(toolBar,button("↻","Обновить",()->{if(!current().home&&current().session!=null)current().session.reload();}),44,44);quickTools=button(">_","DevSuite",()->devSuitePanel());add(toolBar,quickTools,44,44);root.addView(toolBar);
         progress=new ProgressBar(this,null,android.R.attr.progressBarStyleHorizontal);progress.setMax(100);progress.setProgressTintList(android.content.res.ColorStateList.valueOf(CYAN));root.addView(progress,new LinearLayout.LayoutParams(-1,dp(3)));progress.setVisibility(View.INVISIBLE);
-        body=new FrameLayout(this);root.addView(body,new LinearLayout.LayoutParams(-1,0,1));
+        LinearLayout workspace=row();workspace.setGravity(Gravity.TOP);
+        sideStrip=new ScrollView(this);sideStrip.setFillViewport(true);sideTabs=column();sideTabs.setPadding(dp(6),dp(4),dp(6),dp(4));sideTabs.setBackgroundColor(PANEL);sideStrip.addView(sideTabs,new ScrollView.LayoutParams(-1,-2));workspace.addView(sideStrip,new LinearLayout.LayoutParams(dp(220),-1));
+        body=new FrameLayout(this);workspace.addView(body,new LinearLayout.LayoutParams(0,-1,1));root.addView(workspace,new LinearLayout.LayoutParams(-1,0,1));updateChrome();
         bottomBar=row();LinearLayout bottom=bottomBar;bottom.setPadding(dp(4),0,dp(4),dp(4));
-        String[] icons={"‹","+","▣","🧩","↓","☰"}, desc={"Назад","Новая вкладка","Вкладки","Расширения","Загрузки","Меню"};
-        Runnable[] actions={()->back(),()->addTab(),()->tabDialog(),()->quickAddons(),()->downloadPanel(),()->menu()};
+        String[] icons={"‹","+","▣","☆","↓","☰"}, desc={"Назад","Новая вкладка","Вкладки","Закладки","Загрузки","Меню"};
+        Runnable[] actions={()->back(),()->addTab(),()->tabDialog(),()->listDialog("Закладки",bookmarks,"bookmarks"),()->downloadPanel(),()->menu()};
         for(int i=0;i<icons.length;i++){TextView b=button(icons[i],desc[i],actions[i]);LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(0,dp(48),1);p.setMargins(dp(3),dp(3),dp(3),dp(3));bottom.addView(b,p);if(i==2)tabCount=b;if(i==4)downloadButton=b;}root.addView(bottom);setContentView(shell);transfers.setChanged(this::refreshDownloadBadge);
     }
     private Tab current(){return tabs.get(active);}
@@ -191,7 +203,12 @@ public class MainActivity extends Activity {
     }
     private void addTab(){if(tabs.size()>=12){toast("Лимит: 12 вкладок");return;}createTab();active=tabs.size()-1;showTab();}
     private void closeTab(int index){if(fullscreenTab==tabs.get(index))leaveFullscreen();Tab t=tabs.remove(index);if(t.session!=null)transfers.cancelUpload(t.session);if(historyEnabled&&!t.home&&t.extensionOwner==null&&Router.parse(t.url).kind==Router.Kind.WEB){closedPages.addFirst(t.url);while(closedPages.size()>20)closedPages.removeLast();}if(shownTab==t)shownTab=null;if(t.session!=null){if(devSuite!=null)devSuite.detach(t.session);if(t.web.getParent() instanceof android.view.ViewGroup)((android.view.ViewGroup)t.web.getParent()).removeView(t.web);t.web.releaseSession();t.session.close();}if(tabs.isEmpty()){active=0;addTab();return;}if(index<active)active--;else if(active>=tabs.size())active=tabs.size()-1;showTab();}
-    private void refreshTabs(){if(tabCount!=null){tabCount.setText(String.valueOf(tabs.size()));tabCount.setCompoundDrawablePadding(dp(5));tabCount.setCompoundDrawables(icon("▣",CYAN,20),null,null,null);}tabTitles.clear();tabsBar.removeAllViews();for(int i=0;i<tabs.size();i++){final int n=i;Tab t=tabs.get(i);LinearLayout chip=row();chip.setBackground(shape(i==active?0xff30304f:PANEL,12,i==active?PURPLE:0));TextView title=label(t.home?"Новая вкладка":t.title,13,TEXT);tabTitles.put(t,title);title.setSingleLine(true);title.setEllipsize(android.text.TextUtils.TruncateAt.END);title.setMaxWidth(dp(130));title.setPadding(dp(10),dp(9),dp(8),dp(9));title.setOnClickListener(v->{active=n;showTab();});if(t.favicon!=null&&!t.home){ImageView fav=new ImageView(this);fav.setImageBitmap(t.favicon);add(chip,fav,18,18);}else {ImageView fav=new ImageView(this);fav.setImageDrawable(icon(t.home?"⚡":"◎",CYAN,18));add(chip,fav,18,18);}chip.addView(title);ImageView x=new ImageView(this);x.setImageDrawable(icon("×",TEXT,17));x.setScaleType(ImageView.ScaleType.CENTER);x.setBackground(new android.graphics.drawable.RippleDrawable(android.content.res.ColorStateList.valueOf(0x337f8cff),null,shape(0xffffffff,20,0)));x.setContentDescription("Закрыть вкладку");x.setOnClickListener(v->closeTab(n));chip.addView(x,new LinearLayout.LayoutParams(dp(44),dp(44)));add(tabsBar,chip,-2,44);}add(tabsBar,button("+","Новая вкладка",()->addTab()),44,44);}
+    private void refreshTabs(){if(tabCount!=null){tabCount.setText(String.valueOf(tabs.size()));tabCount.setCompoundDrawablePadding(dp(5));tabCount.setCompoundDrawables(icon("▣",CYAN,20),null,null,null);}tabTitles.clear();tabsBar.removeAllViews();sideTabs.removeAllViews();if(fullscreenUi)return;if(sideEnabled()){renderSideTabs();return;}if(tabStrip.getVisibility()!=View.VISIBLE)return;for(int i=0;i<tabs.size();i++){final int n=i;Tab t=tabs.get(i);LinearLayout chip=row();chip.setBackground(shape(i==active?0xff30304f:PANEL,12,i==active?PURPLE:0));TextView title=label(t.home?"Новая вкладка":t.title,13,TEXT);tabTitles.put(t,title);title.setSingleLine(true);title.setEllipsize(android.text.TextUtils.TruncateAt.END);title.setMaxWidth(dp(130));title.setPadding(dp(10),dp(9),dp(8),dp(9));title.setOnClickListener(v->{active=n;showTab();});if(t.favicon!=null&&!t.home){ImageView fav=new ImageView(this);fav.setImageBitmap(t.favicon);add(chip,fav,18,18);}else {ImageView fav=new ImageView(this);fav.setImageDrawable(icon(t.home?"⚡":"◎",CYAN,18));add(chip,fav,18,18);}chip.addView(title);ImageView x=new ImageView(this);x.setImageDrawable(icon("×",TEXT,17));x.setScaleType(ImageView.ScaleType.CENTER);x.setBackground(new android.graphics.drawable.RippleDrawable(android.content.res.ColorStateList.valueOf(0x337f8cff),null,shape(0xffffffff,20,0)));x.setContentDescription("Закрыть вкладку");x.setOnClickListener(v->closeTab(n));chip.addView(x,new LinearLayout.LayoutParams(dp(44),dp(44)));add(tabsBar,chip,-2,44);}add(tabsBar,button("+","Новая вкладка",()->addTab()),44,44);}
+    private void renderSideTabs(){
+        LinearLayout header=row();TextView title=label("Вкладки • "+tabs.size(),15,TEXT);header.addView(title,new LinearLayout.LayoutParams(0,dp(48),1));add(header,button("+","Новая вкладка",this::addTab),44,44);sideTabs.addView(header);
+        for(Tab t:tabs){LinearLayout chip=row();chip.setBackground(glassRipple(12,t==current()?CYAN:0xff343c64));TextView label=label(t.home?"Новая вкладка":t.title,14,TEXT);label.setMaxLines(2);label.setEllipsize(android.text.TextUtils.TruncateAt.END);label.setGravity(Gravity.CENTER_VERTICAL);label.setPadding(dp(10),0,dp(4),0);tabTitles.put(t,label);chip.addView(label,new LinearLayout.LayoutParams(0,dp(52),1));label.setOnClickListener(v->{int i=tabs.indexOf(t);if(i>=0){active=i;showTab();}});add(chip,button("×","Закрыть вкладку",()->{int i=tabs.indexOf(t);if(i>=0)closeTab(i);}),44,44);add(sideTabs,chip,-1,-2);}
+        add(sideTabs,button("Скрыть панель","Скрыть боковую панель",()->{prefs.edit().putBoolean("sideTabs",false).apply();updateChrome();refreshTabs();}),-1,48);
+    }
     private void showTab(){dismissPanel();Tab t=current();if(fullscreenTab!=null&&(fullscreenTab!=t||t.home))leaveFullscreen();if(!t.home)ensureSession(t);for(Tab other:tabs){if(other.session==null)continue;boolean shouldBeActive=other==t&&!t.home;if(other.webActive!=shouldBeActive){other.session.setActive(shouldBeActive);if(other.session.isOpen())extensions.setTabActive(other.session,shouldBeActive);other.webActive=shouldBeActive;}}shownTab=t;if(t.home){body.removeAllViews();address.setText("");body.addView(home(),new FrameLayout.LayoutParams(-1,-1));}else{if(t.web.getParent()!=body){body.removeAllViews();if(t.web.getParent() instanceof android.view.ViewGroup)((android.view.ViewGroup)t.web.getParent()).removeView(t.web);body.addView(t.web,new FrameLayout.LayoutParams(-1,-1));}if(!android.text.TextUtils.equals(address.getText(),t.url))address.setText(t.url);}updateProgress(t);refreshTabs();address.clearFocus();if(!t.home){t.web.requestFocus();if(!t.pendingUrl.isEmpty()){String url=t.pendingUrl;t.pendingUrl="";t.session.load(new GeckoSession.Loader().uri(url));}}}
     private void updateProgress(Tab t){if(!tabs.isEmpty()&&t==current()){if(progress.getProgress()!=t.progress)progress.setProgress(t.progress);int visibility=fullscreenUi?View.GONE:!t.home&&t.progress>0&&t.progress<100?View.VISIBLE:View.INVISIBLE;if(progress.getVisibility()!=visibility)progress.setVisibility(visibility);}}
     private View home(){
@@ -204,7 +221,7 @@ public class MainActivity extends Activity {
         String[] names={"Google","DuckDuckGo","Bing","Brave Search","Qwant","Яндекс","Ahmia","Добавить"};String[] icons={"G","D","b","B","Q","Я","◎","+"};int[] colors={0xff79aaff,0xffff9c50,CYAN,0xffff855d,PURPLE,0xffff7d8a,0xffc69cff,TEXT};Runnable[] actions=new Runnable[8];for(int i=0;i<6;i++){final int n=i;actions[i]=()->setEngine(Router.ENGINES[n][0],Router.ENGINES[n][1]);}actions[6]=()->setEngine(Router.ENGINES[10][0],Router.ENGINES[10][1]);actions[7]=()->customEngine();
         int cols=getResources().getConfiguration().screenWidthDp>=720?8:4;grid(box,names,icons,colors,actions,cols);
         grid(box,new String[]{"Дополнения","Загрузки","Закладки","История","Настройки","Вкладки"},new String[]{"✧","↓","☆","◷","⚙","▣"},new int[]{PURPLE,CYAN},new Runnable[]{()->quickAddons(),()->downloadPanel(),()->listDialog("Закладки",bookmarks,"bookmarks"),()->listDialog("История",history,"history"),()->settings(),()->tabDialog()},getResources().getConfiguration().screenWidthDp>=650?6:3);
-        TextView note=label("GECKO ALPHA 0.9.4   •   Tor Engine • эксперимент",11,MUTED);note.setGravity(Gravity.CENTER);add(box,note,-1,28);return sc;
+        TextView note=label("GECKO ALPHA 0.9.5   •   Tor Engine • эксперимент",11,MUTED);note.setGravity(Gravity.CENTER);add(box,note,-1,28);return sc;
     }
 
     private android.graphics.drawable.Drawable ripple(int color,int radius,int stroke){return new android.graphics.drawable.RippleDrawable(android.content.res.ColorStateList.valueOf(0x337f8cff),shape(color,radius,stroke),null);}
@@ -886,10 +903,64 @@ public class MainActivity extends Activity {
     @Override protected void onStop(){if(videoSuspend)for(Tab t:tabs){if(t.session!=null&&t.session.isOpen()&&t.webActive){t.session.setActive(false);extensions.setTabActive(t.session,false);t.webActive=false;}}super.onStop();}
     @Override protected void onStart(){super.onStart();if(prefs!=null)applyVideoPower();if(!tabs.isEmpty()){Tab t=current();if(!t.home&&t.session!=null&&t.session.isOpen()&&!t.webActive){t.session.setActive(true);extensions.setTabActive(t.session,true);t.webActive=true;}}}
     private void menu(){
-        LinearLayout c=panel("AetherBolt","0.9.4 DevSuite • Быстрый доступ",true);
-        item(c,"▤","Офлайн и чтение","Сохранить текст текущей страницы или открыть библиотеку","›",this::offlinePanel);
-        item(c,"✧","AI Center","Чат • анализ текста по подтверждению","›",this::aiPanel);
-        grid(c,new String[]{"Новая вкладка","Вкладки","Вперёд","Закладка","История","Загрузки","Расширения","DevSuite","VPN","Защита","Настройки","Закладки"},new String[]{"+","▣","›","☆","◷","↓","✧",">_","◈","◈","⚙","☆"},new int[]{CYAN,PURPLE},new Runnable[]{()->addTab(),()->tabDialog(),()->{dismissPanel();if(!current().home&&current().session!=null&&current().canForward)current().session.goForward();},()->saveBookmark(),()->listDialog("История",history,"history"),()->downloadPanel(),()->quickAddons(),()->devSuitePanel(),()->vpnPanel(),()->privacy(),()->settings(),()->listDialog("Закладки",bookmarks,"bookmarks")},3);
+        LinearLayout c=panel("AetherBolt","Быстрый доступ",true);
+        section(c,"БРАУЗЕР");
+        grid(c,new String[]{"Закладки","История","Загрузки","Вкладки","Вперёд","Добавить закладку"},new String[]{"☆","◷","↓","▣","›","+"},new int[]{CYAN,PURPLE},new Runnable[]{()->listDialog("Закладки",bookmarks,"bookmarks"),()->listDialog("История",history,"history"),this::downloadPanel,this::tabDialog,()->{dismissPanel();if(!current().home&&current().session!=null&&current().canForward)current().session.goForward();},this::saveBookmark},3);
+        item(c,"▣","Версия сайта для ПК",desktop?"Включена • нажмите для мобильной версии":"Мобильная версия • нажмите для ПК",desktop?"●":"○",this::toggleDesktopPage);
+        item(c,"▤","Чтение офлайн","Текст страницы и библиотека","›",this::offlinePanel);
+        item(c,"✧","Инструменты","AI, расширения, VPN, файлы и DevSuite","›",this::toolsHub);
+        item(c,"⚙","Настройки","Удобство, внешний вид и дополнительные параметры","›",this::settings);
+    }
+    private void toolsHub(){
+        LinearLayout c=panel("Инструменты","Дополнительные возможности AetherBolt",false);
+        section(c,"НА КАЖДЫЙ ДЕНЬ");
+        item(c,"✧","AI Center","Чат и обработка текста","›",this::aiPanel);
+        item(c,"▶","Медиацентр","Локальные видео и аудио","›",()->startActivity(new Intent(this,MediaCenterActivity.class)));
+        item(c,"▤","Файлы и документы","PDF, текст, архивы","›",()->startActivity(new Intent(this,FileCenterActivity.class)));
+        item(c,"◈","Password Vault","Локальное хранилище паролей","›",()->startActivity(new Intent(this,PasswordVaultActivity.class)));
+        section(c,"СЕТЬ И РАЗРАБОТКА");
+        item(c,"✧","Расширения","Установленные дополнения","›",this::quickAddons);
+        item(c,"◈","VPN",vpn.active()?"Подключён":"Отключён","›",this::vpnPanel);
+        item(c,"◈","Конфиденциальность","Трекеры, DNS, блокировщик","›",this::privacy);
+        item(c,">_","DevSuite","Инструменты разработчика","›",this::devSuitePanel);
+        item(c,"▣","Module Manager","Управление дополнительными модулями","›",this::moduleManager);
+    }
+    private void toggleDesktopPage(){
+        prefs.edit().putBoolean("desktop",!desktop).apply();loadOptions();for(Tab t:tabs)applyOptions(t);dismissPanel();
+        if(!current().home&&current().session!=null)current().session.reload();
+        toast(desktop?"Версия сайта для ПК":"Мобильная версия сайта");
+    }
+    private void desktopModePanel(){
+        LinearLayout c=panel("Удобство интерфейса","Desktop Mode Pro • без лишних элементов",false);
+        boolean side=prefs.getBoolean("sideTabs",false),advanced=prefs.getBoolean("advancedToolbar",false);
+        item(c,"▣","Боковая панель вкладок","На экранах шириной от 840 dp. При меньшей ширине — обычные вкладки.",side?"● Вкл":"○ Выкл",()->{prefs.edit().putBoolean("sideTabs",!side).apply();updateChrome();refreshTabs();desktopModePanel();});
+        item(c,">_","DevSuite в адресной панели","Быстрый доступ для разработчика. По умолчанию скрыт.",advanced?"● Вкл":"○ Выкл",()->{prefs.edit().putBoolean("advancedToolbar",!advanced).apply();updateChrome();desktopModePanel();});
+        item(c,"▣","Версия сайта для ПК","Меняет User-Agent всех вкладок; текущая страница перезагрузится.",desktop?"● Вкл":"○ Выкл",this::toggleDesktopPage);
+        item(c,"↻","Простой интерфейс","Скрыть боковую панель и кнопку разработчика, не меняя защиту и данные.","›",()->{prefs.edit().putBoolean("sideTabs",false).putBoolean("advancedToolbar",false).apply();updateChrome();refreshTabs();desktopModePanel();});
+        section(c,"КЛАВИАТУРА И МЫШЬ");
+        item(c,"⌨","Ctrl+L / Ctrl+T / Ctrl+W","Адресная строка / новая вкладка / закрыть вкладку","",()->{});
+        item(c,"⌨","Ctrl+Shift+T / Ctrl+Tab","Вернуть закрытую вкладку / переключить вкладку","",()->{});
+        item(c,"⌨","Ctrl+R / F5","Обновить текущую страницу","",()->{});
+        item(c,"⌨","Alt+← / Alt+→","Назад / вперёд по странице","",()->{});
+    }
+    @Override public boolean dispatchKeyEvent(KeyEvent e){
+        if(e.getAction()!=KeyEvent.ACTION_DOWN||e.getRepeatCount()!=0||tabs.isEmpty()||startup!=null||fullscreenUi||overlay!=null||addonPopup!=null&&addonPopup.isShowing())return super.dispatchKeyEvent(e);
+        int key=e.getKeyCode();
+        if(e.isCtrlPressed()&&!e.isAltPressed()&&!e.isMetaPressed()){
+            switch(key){
+                case KeyEvent.KEYCODE_L:if(!e.isShiftPressed()){address.requestFocus();address.selectAll();return true;}break;
+                case KeyEvent.KEYCODE_T:if(e.isShiftPressed())reopenTab();else addTab();return true;
+                case KeyEvent.KEYCODE_W:if(!e.isShiftPressed()){closeTab(active);return true;}break;
+                case KeyEvent.KEYCODE_TAB:active=(active+(e.isShiftPressed()?tabs.size()-1:1))%tabs.size();showTab();return true;
+                case KeyEvent.KEYCODE_R:if(!e.isShiftPressed()&&!current().home&&current().session!=null){current().session.reload();return true;}break;
+            }
+        }
+        if(key==KeyEvent.KEYCODE_F5&&!e.isCtrlPressed()&&!e.isAltPressed()&&!e.isMetaPressed()&&!current().home&&current().session!=null){current().session.reload();return true;}
+        if(e.isAltPressed()&&!e.isCtrlPressed()&&!e.isMetaPressed()&&!current().home&&current().session!=null){
+            if(key==KeyEvent.KEYCODE_DPAD_LEFT&&current().canBack){current().session.goBack();return true;}
+            if(key==KeyEvent.KEYCODE_DPAD_RIGHT&&current().canForward){current().session.goForward();return true;}
+        }
+        return super.dispatchKeyEvent(e);
     }
 
     private String searchLanguageName(){switch(prefs.getString("searchLanguage","all")){case "uk":return "Українська";case "ru":return "Русский";case "en":return "English";default:return "Все языки";}}
@@ -1019,7 +1090,19 @@ public class MainActivity extends Activity {
             case "v86":launchLocalTool(id,"v86/index.html");break;
         }
     }
-    private void settings(){LinearLayout c=panel("Настройки","Управление AetherBolt Browser",false);section(c,"ПЕРСОНАЛИЗАЦИЯ");item(c,"⌕","Поисковая система",engineName,"›",()->engineDialog());item(c,"◎","Язык результатов",searchLanguageName()+" • "+SearchLanguage.support(engineTemplate),"›",()->searchLanguages());item(c,"✧","Внешний вид",appearance,"›",()->themes());item(c,"▣","Настройки сайтов","JavaScript, изображения, ПК, масштаб, медиа","›",()->webOptions());section(c,"ПРОИЗВОДИТЕЛЬНОСТЬ");item(c,"◎","Performance Center","Профили • память • батарея • трафик • вкладки","›",this::performanceCenter);item(c,"▶","Видео и производительность","Настройка нагрузки на планшет • диагностика","›",this::videoSettings);section(c,"БЕЗОПАСНОСТЬ И МОДУЛИ");item(c,"▣","Module Manager","Локальные инструменты • управление запуском","›",this::moduleManager);item(c,"✧","AI Center","GPT • ChatGPT Web • совместимые серверы","›",this::aiPanel);item(c,"◈","Password Vault","Локальное шифрованное хранилище","›",()->startActivity(new Intent(this,PasswordVaultActivity.class)));item(c,">_","DevSuite","Eruda • xterm • CyberChef • Linux • прокси","›",()->devSuitePanel());item(c,"◈","DevSuite Security","Кодирование • диагностика • расширения","›",this::securityCenter);item(c,"◈","VPN • WireGuard",vpn.active()?"Туннель включён":"Отключён","›",()->vpnPanel());item(c,"◈","Конфиденциальность","Cookies, история, реклама и трекеры","›",()->privacy());item(c,"◈","AdBlock Pro","uBlock Origin • управление фильтрами","›",this::adBlockPanel);item(c,"◎","DNS Manager","Системный DNS / DNS-over-HTTPS","›",this::dnsPanel);item(c,"✧","Расширения и скрипты","GeckoView • XPI / JS","›",()->addonManage());item(c,"◎","Tor Engine","Встроенный клиент • текстовый просмотр .onion","›",()->openTor(""));section(c,"ФАЙЛЫ И ДАННЫЕ");item(c,"▤","Backup Center","Зашифрованный экспорт и восстановление","›",this::backupPanel);item(c,"↓","Загрузки","Менеджер файлов","›",()->downloadPanel());item(c,"▤","File & Document Center","Папки • архивы • PDF • текст • HEX","›",()->startActivity(new Intent(this,FileCenterActivity.class)));item(c,"▤","Offline Browser","Снимки страниц • библиотека • режим чтения","›",this::offlinePanel);item(c,"⚙","Download Accelerator","Очередь и число параллельных скачиваний","›",this::downloadSettings);item(c,"▶","Media Center Pro","Локальные файлы • PiP • плейлист • EQ","›",()->startActivity(new Intent(this,MediaCenterActivity.class)));item(c,"×","Очистить данные","История и данные сайтов","›",()->clearData());section(c,"О ПРИЛОЖЕНИИ");item(c,"↻","Обновление браузера","Локальный дельта-патч .aeb","›",()->updatePanel());item(c,"⚡","AetherBolt Browser","0.9.4 Alpha • GeckoView 161","›",()->notice("AetherBolt","Beyond the Limits. GeckoView • XPI. Tor Engine — экспериментальный текстовый просмотр; не полноценный Tor Browser."));}
+    private void settings(){
+        LinearLayout c=panel("Настройки","Основные параметры",false);
+        item(c,"▣","Удобство интерфейса","Вкладки, простой режим, клавиатура","›",this::desktopModePanel);
+        item(c,"✧","Внешний вид",appearance,"›",this::themes);
+        item(c,"⌕","Поисковая система",engineName,"›",this::engineDialog);
+        item(c,"▣","Настройки сайтов","Мобильный / компьютерный режим","›",this::webOptions);
+        item(c,"▶","Видео и производительность","Энергосбережение и диагностика","›",this::videoSettings);
+        item(c,"◈","Конфиденциальность","История, блокировка, DNS","›",this::privacy);
+        item(c,"▤","Backup Center","Резервные копии","›",this::backupPanel);
+        item(c,"✧","Инструменты и модули","AI, VPN, файлы, расширения","›",this::toolsHub);
+        item(c,"⚙","Все настройки","Полный список функций и обновления","›",this::allSettings);
+    }
+    private void allSettings(){LinearLayout c=panel("Все настройки","Управление AetherBolt Browser",false);section(c,"ПЕРСОНАЛИЗАЦИЯ");item(c,"⌕","Поисковая система",engineName,"›",()->engineDialog());item(c,"◎","Язык результатов",searchLanguageName()+" • "+SearchLanguage.support(engineTemplate),"›",()->searchLanguages());item(c,"✧","Внешний вид",appearance,"›",()->themes());item(c,"▣","Настройки сайтов","JavaScript, изображения, ПК, масштаб, медиа","›",()->webOptions());section(c,"ПРОИЗВОДИТЕЛЬНОСТЬ");item(c,"◎","Performance Center","Профили • память • батарея • трафик • вкладки","›",this::performanceCenter);item(c,"▶","Видео и производительность","Настройка нагрузки на планшет • диагностика","›",this::videoSettings);section(c,"БЕЗОПАСНОСТЬ И МОДУЛИ");item(c,"▣","Module Manager","Локальные инструменты • управление запуском","›",this::moduleManager);item(c,"✧","AI Center","GPT • ChatGPT Web • совместимые серверы","›",this::aiPanel);item(c,"◈","Password Vault","Локальное шифрованное хранилище","›",()->startActivity(new Intent(this,PasswordVaultActivity.class)));item(c,">_","DevSuite","Eruda • xterm • CyberChef • Linux • прокси","›",()->devSuitePanel());item(c,"◈","DevSuite Security","Кодирование • диагностика • расширения","›",this::securityCenter);item(c,"◈","VPN • WireGuard",vpn.active()?"Туннель включён":"Отключён","›",()->vpnPanel());item(c,"◈","Конфиденциальность","Cookies, история, реклама и трекеры","›",()->privacy());item(c,"◈","AdBlock Pro","uBlock Origin • управление фильтрами","›",this::adBlockPanel);item(c,"◎","DNS Manager","Системный DNS / DNS-over-HTTPS","›",this::dnsPanel);item(c,"✧","Расширения и скрипты","GeckoView • XPI / JS","›",()->addonManage());item(c,"◎","Tor Engine","Встроенный клиент • текстовый просмотр .onion","›",()->openTor(""));section(c,"ФАЙЛЫ И ДАННЫЕ");item(c,"▤","Backup Center","Зашифрованный экспорт и восстановление","›",this::backupPanel);item(c,"↓","Загрузки","Менеджер файлов","›",()->downloadPanel());item(c,"▤","File & Document Center","Папки • архивы • PDF • текст • HEX","›",()->startActivity(new Intent(this,FileCenterActivity.class)));item(c,"▤","Offline Browser","Снимки страниц • библиотека • режим чтения","›",this::offlinePanel);item(c,"⚙","Download Accelerator","Очередь и число параллельных скачиваний","›",this::downloadSettings);item(c,"▶","Media Center Pro","Локальные файлы • PiP • плейлист • EQ","›",()->startActivity(new Intent(this,MediaCenterActivity.class)));item(c,"×","Очистить данные","История и данные сайтов","›",()->clearData());section(c,"О ПРИЛОЖЕНИИ");item(c,"↻","Обновление браузера","Локальный дельта-патч .aeb","›",()->updatePanel());item(c,"⚡","AetherBolt Browser","0.9.5 Alpha • GeckoView 161","›",()->notice("AetherBolt","Beyond the Limits. GeckoView • XPI. Tor Engine — экспериментальный текстовый просмотр; не полноценный Tor Browser."));}
     private void clearData(){history.clear();closedPages.clear();for(Tab t:tabs)t.preview=null;prefs.edit().remove("workspaceTabs").remove("workspaceActive").apply();writeList("history",history);notice("История очищена","Данные сайтов Gecko не удалены; отдельный механизм ещё не перенесён.");}
 
     private void readList(String key,ArrayList<String> out){try{JSONArray a=new JSONArray(prefs.getString(key,"[]"));for(int i=0;i<a.length();i++)out.add(a.getString(i));}catch(JSONException ignored){}}
@@ -1027,6 +1110,6 @@ public class MainActivity extends Activity {
     private void remember(ArrayList<String> data,String key,String url,int cap){data.remove(url);data.add(0,url);while(data.size()>cap)data.remove(data.size()-1);writeList(key,data);}
     private void saveBookmark(){Tab t=current();String u=t.url;if(t.home||u==null||Router.parse(u).kind!=Router.Kind.WEB){toast("Сначала откройте сайт");return;}remember(bookmarks,"bookmarks",u,200);toast("Закладка сохранена");}
     private void listDialog(String title,ArrayList<String> data,String key){LinearLayout c=panel(title,data.size()+" записей",false);if(data.isEmpty()){item(c,"☆","Пока пусто","Здесь появятся сохранённые страницы","",()->{});return;}for(String u:new ArrayList<>(data)){String host=Uri.parse(u).getHost();item(c,key.equals("history")?"◷":"☆",host==null?u:host,u,"›",()->{dismissPanel();navigate(u);});}item(c,"×","Очистить список","","›",()->{LinearLayout confirm=panel("Очистить список?","Действие нельзя отменить",true);item(confirm,"×","Удалить все записи","","",()->{data.clear();writeList(key,data);listDialog(title,data,key);});item(confirm,"‹","Отмена","","",()->listDialog(title,data,key));});}
-    @Override public void onConfigurationChanged(android.content.res.Configuration c){super.onConfigurationChanged(c);tabStrip.setVisibility(!fullscreenUi&&c.screenWidthDp>=600?View.VISIBLE:View.GONE);if(!fullscreenUi&&!tabs.isEmpty())showTab();else shell.requestApplyInsets();}
+    @Override public void onConfigurationChanged(android.content.res.Configuration c){super.onConfigurationChanged(c);updateChrome();if(!fullscreenUi&&!tabs.isEmpty())showTab();else shell.requestApplyInsets();}
     @Override protected void onDestroy(){if(fullscreenUi)leaveFullscreen();chromeHandler.removeCallbacksAndMessages(null);if(transfers!=null)transfers.destroy();if(devSuite!=null)devSuite.stop();if(addonPopup!=null)addonPopup.dismiss();for(WebExtension e:registeredAddons.values()){e.setActionDelegate(null);e.setTabDelegate(null);}if(body!=null)body.removeAllViews();for(Tab t:tabs){if(t.session!=null){t.web.releaseSession();t.session.close();}}super.onDestroy();}
 }
