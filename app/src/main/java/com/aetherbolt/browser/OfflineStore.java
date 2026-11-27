@@ -40,6 +40,30 @@ final class OfflineStore {
         long size=0;for(File f:all){if(result.size()>=MAX_COUNT||size+f.length()>LIMIT)break;try{result.add(readFile(f));size+=f.length();}catch(Exception ignored){}}
         result.sort(Comparator.comparingLong((Page p)->p.date).reversed());return result;
     }
+    static synchronized int merge(Context c,org.json.JSONArray pages)throws Exception{
+        if(pages.length()>MAX_COUNT)throw new IOException("Слишком много снимков");
+        List<Page> existing=list(c);Set<String> fingerprints=new HashSet<>();
+        for(Page p:existing)fingerprints.add(fingerprint(p.title,p.url,p.text));
+        File[] old=files(c);long used=0;for(File f:old)used+=f.length();
+        ArrayList<byte[]> pending=new ArrayList<>();
+        for(int i=0;i<pages.length();i++){
+            JSONObject j=pages.getJSONObject(i);String title=j.getString("title"),url=j.getString("url"),text=j.getString("text");long date=j.getLong("date");
+            if(title.length()>512||url.length()>4096||text.length()>180000||text.trim().isEmpty()||Router.parse(url).kind!=Router.Kind.WEB)throw new IOException("Некорректный снимок");
+            Uri u=Uri.parse(url);if(u.getEncodedQuery()!=null||u.getEncodedFragment()!=null||u.getUserInfo()!=null)throw new IOException("Некорректный URL снимка");
+            if(!fingerprints.add(fingerprint(title,url,text)))continue;
+            byte[] bytes=new JSONObject().put("title",title).put("url",url).put("text",text).put("date",date).toString().getBytes(StandardCharsets.UTF_8);
+            used+=bytes.length;if(bytes.length>MAX_FILE||used>LIMIT||old.length+pending.size()+1>MAX_COUNT)throw new IOException("Недостаточно места в офлайн-библиотеке");
+            pending.add(bytes);
+        }
+        ArrayList<String> created=new ArrayList<>();
+        try{for(byte[] bytes:pending){String id=UUID.randomUUID().toString();created.add(id);AtomicFile a=new AtomicFile(file(c,id));FileOutputStream out=a.startWrite();try{out.write(bytes);a.finishWrite(out);}catch(Exception e){a.failWrite(out);throw e;}}}
+        catch(Exception e){for(String id:created)try{remove(c,id);}catch(Exception ignored){}throw e;}
+        return pending.size();
+    }
+    private static String fingerprint(String title,String url,String text)throws Exception{
+        java.security.MessageDigest md=java.security.MessageDigest.getInstance("SHA-256");
+        return android.util.Base64.encodeToString(md.digest(new org.json.JSONArray().put(title).put(url).put(text).toString().getBytes(StandardCharsets.UTF_8)),android.util.Base64.NO_WRAP);
+    }
     static synchronized void remove(Context c,String id)throws IOException{File f=file(c,id);new AtomicFile(f).delete();if(f.exists())throw new IOException("Не удалось удалить");}
     static synchronized void clear(Context c)throws IOException{for(File f:files(c))remove(c,f.getName().substring(0,36));}
 }
