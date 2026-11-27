@@ -204,7 +204,7 @@ public class MainActivity extends Activity {
         String[] names={"Google","DuckDuckGo","Bing","Brave Search","Qwant","Яндекс","Ahmia","Добавить"};String[] icons={"G","D","b","B","Q","Я","◎","+"};int[] colors={0xff79aaff,0xffff9c50,CYAN,0xffff855d,PURPLE,0xffff7d8a,0xffc69cff,TEXT};Runnable[] actions=new Runnable[8];for(int i=0;i<6;i++){final int n=i;actions[i]=()->setEngine(Router.ENGINES[n][0],Router.ENGINES[n][1]);}actions[6]=()->setEngine(Router.ENGINES[10][0],Router.ENGINES[10][1]);actions[7]=()->customEngine();
         int cols=getResources().getConfiguration().screenWidthDp>=720?8:4;grid(box,names,icons,colors,actions,cols);
         grid(box,new String[]{"Дополнения","Загрузки","Закладки","История","Настройки","Вкладки"},new String[]{"✧","↓","☆","◷","⚙","▣"},new int[]{PURPLE,CYAN},new Runnable[]{()->quickAddons(),()->downloadPanel(),()->listDialog("Закладки",bookmarks,"bookmarks"),()->listDialog("История",history,"history"),()->settings(),()->tabDialog()},getResources().getConfiguration().screenWidthDp>=650?6:3);
-        TextView note=label("GECKO ALPHA 0.8.9   •   Tor Engine • эксперимент",11,MUTED);note.setGravity(Gravity.CENTER);add(box,note,-1,28);return sc;
+        TextView note=label("GECKO ALPHA 0.9.0   •   Tor Engine • эксперимент",11,MUTED);note.setGravity(Gravity.CENTER);add(box,note,-1,28);return sc;
     }
 
     private android.graphics.drawable.Drawable ripple(int color,int radius,int stroke){return new android.graphics.drawable.RippleDrawable(android.content.res.ColorStateList.valueOf(0x337f8cff),shape(color,radius,stroke),null);}
@@ -525,9 +525,60 @@ public class MainActivity extends Activity {
         if(e.name.toLowerCase(Locale.ROOT).matches(".*\\.conf(\\.txt)?"))item(c,"◈","Импортировать в VPN","WireGuard","›",()->{try{vpn.importMany(Collections.singletonList(transfers.uri(e)),msg->runOnUiThread(()->{if(!isDestroyed()){vpnPanel();toast(msg);}}));}catch(Exception ex){toast("Не удалось открыть профиль");}});
         item(c,"×","Удалить файл","С устройства","›",()->new AlertDialog.Builder(this).setTitle("Удалить файл?").setMessage(e.name).setNegativeButton("Отмена",null).setPositiveButton("Удалить",(dialog,w)->{if(transfers.delete(e))downloadPanel();else toast("Не удалось удалить файл");}).show());
     }
+    private void securityCenter(){
+        LinearLayout c=panel("DevSuite Security","Инструменты для собственных и разрешённых тестовых систем",false);
+        section(c,"ЛОКАЛЬНЫЕ ИНСТРУМЕНТЫ");
+        item(c,"#","Encoder Lab","Base64 • URL • HEX • SHA-256; офлайн","›",this::encoderLab);
+        item(c,"▤","CyberChef","Дополнительные локальные преобразования","›",()->launchLocalTool("cyberchef","cyberchef/CyberChef_v11.6.0.html"));
+        item(c,"◎","Сведения о текущей странице","Схема • хост • порт • состояние HTTPS URL; без сетевых запросов","›",this::siteSummary);
+        section(c,"ОПЦИОНАЛЬНЫЕ РАСШИРЕНИЯ");
+        item(c,"◈","FoxyProxy Standard","Оригинальный менеджер прокси; не использовать одновременно с активным прокси DevSuite","›",()->securityAddon("FoxyProxy Standard","foxyproxy-standard","Расширение может изменять маршрутизацию. Сначала вручную отключите встроенный прокси DevSuite, если он активен. Проверьте внешний IP после настройки."));
+        item(c,"◈","Cookie-Editor","Управление cookies собственных сессий","›",()->securityAddon("Cookie-Editor","cookie-editor","Cookies могут содержать данные входа. Не передавайте их третьим лицам и не импортируйте чужие сессии."));
+        item(c,"◎","Wappalyzer","Определение технологий сайта; отдельная загрузка","›",()->securityAddon("Wappalyzer","wappalyzer","Расширение запрашивает доступ к данным сайтов. Изучите разрешения и политику приватности. Размер зависит от версии."));
+        item(c,"✧","Установленные расширения","Управление разрешениями и состоянием через GeckoView","›",this::addonManage);
+        section(c,"СПРАВОЧНЫЕ РЕСУРСЫ");
+        item(c,"◎","Shodan","Открыть официальный сайт вручную; без API и фоновых запросов","›",()->openSecurityResource("https://www.shodan.io/"));
+        item(c,"◎","HackBar","Исследование совместимости; локальные преобразования уже доступны в Encoder Lab","",()->notice("HackBar","Интеграция редактора запросов и совместимость панели пока не проверены."));
+        item(c,"◎","DotGit","В черновике; автоматических проверок сайтов и скачивания репозиториев нет","",()->notice("DotGit","Планируется отдельная проверка безопасности и совместимости. Используйте только разрешённые тестовые системы."));
+        section(c,"ПРИВАТНОСТЬ");
+        item(c,"◈","Ничего не устанавливается автоматически","Дополнения Mozilla загружаются только по вашему выбору. Проверяйте разрешения и отключайте неиспользуемые расширения.","",()->{});
+    }
+    private void securityAddon(String name,String slug,String warning){
+        LinearLayout c=panel(name,"Оригинальный каталог Mozilla Add-ons",false);
+        TextView t=label(warning+"\nСовместимость Firefox Android не гарантирует работу в GeckoView.",14,MUTED);t.setPadding(dp(12),dp(10),dp(12),dp(10));c.addView(t);
+        item(c,"↗","Страница Mozilla","Описание, автор, лицензия и разрешения","›",()->openSecurityResource("https://addons.mozilla.org/firefox/addon/"+slug+"/"));
+        item(c,"↓","Запросить установку","Официальный XPI; подтверждение и проверка движком","›",()->confirmXpi("https://addons.mozilla.org/firefox/downloads/latest/"+slug+"/latest.xpi"));
+        item(c,"✧","Управление расширениями","Проверка наличия и включения","›",this::addonManage);
+    }
+    private void openSecurityResource(String url){
+        if(tabs.size()>=12){toast("Закройте одну вкладку");return;}
+        addTab();navigate(url);
+    }
+    private void siteSummary(){
+        LinearLayout c=panel("Сведения о странице","Локальный разбор адреса",false);
+        if(tabs.isEmpty()||current().home||Router.parse(current().url).kind!=Router.Kind.WEB){item(c,"◎","Откройте HTTP(S)-страницу","","",()->{});return;}
+        Uri u=Uri.parse(current().url);String scheme=u.getScheme();int port=u.getPort();if(port<0)port="https".equals(scheme)?443:80;
+        item(c,"◎","Хост",u.getHost()==null?"—":u.getHost(),"",()->{});
+        item(c,"◎","Схема",scheme==null?"—":scheme,"",()->{});
+        item(c,"◎","Порт",String.valueOf(port),"",()->{});
+        item(c,"◈","HTTPS URL","https".equals(scheme)?"Да (не проверка сертификата)":"Нет","",()->{});
+        item(c,"◎","Ограничения","Нет сканирования портов, DNS-запросов, поиска CVE или отправки адреса сторонним сервисам.","",()->{});
+    }
+    private void encoderLab(){
+        LinearLayout c=panel("Encoder Lab","Локальные преобразования • без сети",false);
+        EditText input=field("Исходный текст");input.setSingleLine(false);input.setMinLines(3);input.setMaxLines(7);input.setFilters(new android.text.InputFilter[]{new android.text.InputFilter.LengthFilter(65536)});input.setSaveEnabled(false);input.setInputType(android.text.InputType.TYPE_CLASS_TEXT|android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE|android.text.InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);c.addView(input,new LinearLayout.LayoutParams(-1,-2));
+        TextView out=label("",14,TEXT);out.setTextIsSelectable(true);out.setSaveEnabled(false);out.setTypeface(Typeface.MONOSPACE);
+        Spinner mode=new Spinner(this);String[] names={"Base64 → кодировать","Base64 → декодировать","URL form → кодировать","URL form → декодировать","HEX → кодировать","HEX → декодировать","SHA-256"};mode.setAdapter(new ArrayAdapter<String>(this,android.R.layout.simple_spinner_dropdown_item,names));c.addView(mode,new LinearLayout.LayoutParams(-1,dp(48)));
+        item(c,"✓","Преобразовать","Ввод и результат не записываются в историю","›",()->{
+            try{out.setText(SecurityCodec.convert(mode.getSelectedItemPosition(),input.getText().toString()));}catch(Exception e){out.setText("Ошибка: неверный формат входных данных");}
+        });
+        item(c,"×","Очистить","Удалить ввод и результат с экрана","›",()->{input.setText("");out.setText("");});
+        section(c,"РЕЗУЛЬТАТ");c.addView(out,new LinearLayout.LayoutParams(-1,-2));
+    }
     private void devSuitePanel(){
         boolean page=!tabs.isEmpty()&&!current().home&&Router.parse(current().url).kind==Router.Kind.WEB;
         LinearLayout c=panel("DevSuite","AetherBolt • Инструменты разработчика",true);
+        section(c,"БЕЗОПАСНОСТЬ");item(c,"◈","DevSuite Security","Кодирование • диагностика • каталог расширений","›",this::securityCenter);
         section(c,"ТЕКУЩАЯ СТРАНИЦА");
         item(c,"JS","Eruda — инспектор",page?"DOM • CSS • сеть • консоль":"Сначала откройте сайт","›",()->{if(!page){toast("Откройте HTTP(S)-страницу");return;}if(!ModuleCatalog.guard(this,"eruda"))return;dismissPanel();devSuite.send("eruda");});
         item(c,">_","xterm — JavaScript-консоль",page?"Выполнение JS в активной вкладке":"Сначала откройте сайт","›",()->{if(!page){toast("Откройте HTTP(S)-страницу");return;}if(!ModuleCatalog.guard(this,"xterm"))return;dismissPanel();devSuite.send("xterm");});
@@ -835,7 +886,7 @@ public class MainActivity extends Activity {
     @Override protected void onStop(){if(videoSuspend)for(Tab t:tabs){if(t.session!=null&&t.session.isOpen()&&t.webActive){t.session.setActive(false);extensions.setTabActive(t.session,false);t.webActive=false;}}super.onStop();}
     @Override protected void onStart(){super.onStart();if(prefs!=null)applyVideoPower();if(!tabs.isEmpty()){Tab t=current();if(!t.home&&t.session!=null&&t.session.isOpen()&&!t.webActive){t.session.setActive(true);extensions.setTabActive(t.session,true);t.webActive=true;}}}
     private void menu(){
-        LinearLayout c=panel("AetherBolt","0.8.9 DevSuite • Быстрый доступ",true);
+        LinearLayout c=panel("AetherBolt","0.9.0 DevSuite • Быстрый доступ",true);
         grid(c,new String[]{"Новая вкладка","Вкладки","Вперёд","Закладка","История","Загрузки","Расширения","DevSuite","VPN","Защита","Настройки","Закладки"},new String[]{"+","▣","›","☆","◷","↓","✧",">_","◈","◈","⚙","☆"},new int[]{CYAN,PURPLE},new Runnable[]{()->addTab(),()->tabDialog(),()->{dismissPanel();if(!current().home&&current().session!=null&&current().canForward)current().session.goForward();},()->saveBookmark(),()->listDialog("История",history,"history"),()->downloadPanel(),()->quickAddons(),()->devSuitePanel(),()->vpnPanel(),()->privacy(),()->settings(),()->listDialog("Закладки",bookmarks,"bookmarks")},3);
     }
 
@@ -860,7 +911,7 @@ public class MainActivity extends Activity {
             String id=m[0];boolean on=ModuleCatalog.enabled(this,id);
             item(c,"▣",m[1],m[2],on?"● Вкл":"○ Выкл",()->moduleDetail(id,m[1],m[2]));
         }
-        section(c,"СЕТЬ И ЗАЩИТА • ОТДЕЛЬНОЕ УПРАВЛЕНИЕ");
+        section(c,"СЕТЬ И ЗАЩИТА • ОТДЕЛЬНОЕ УПРАВЛЕНИЕ");item(c,"◈","DevSuite Security","Опциональные инструменты тестирования","›",this::securityCenter);
         item(c,"◈","VPN • WireGuard",vpn.active()?"Туннель включён":"Туннель отключён","›",this::vpnPanel);
         item(c,"◎","DNS Manager","Режим: "+dnsMode(),"›",this::dnsPanel);
         item(c,"◈","AdBlock Pro","Статус и настройки оригинального uBlock Origin","›",this::adBlockPanel);
@@ -892,7 +943,7 @@ public class MainActivity extends Activity {
             case "v86":launchLocalTool(id,"v86/index.html");break;
         }
     }
-    private void settings(){LinearLayout c=panel("Настройки","Управление AetherBolt Browser",false);section(c,"ПЕРСОНАЛИЗАЦИЯ");item(c,"⌕","Поисковая система",engineName,"›",()->engineDialog());item(c,"◎","Язык результатов",searchLanguageName()+" • "+SearchLanguage.support(engineTemplate),"›",()->searchLanguages());item(c,"✧","Внешний вид",appearance,"›",()->themes());item(c,"▣","Настройки сайтов","JavaScript, изображения, ПК, масштаб, медиа","›",()->webOptions());section(c,"ПРОИЗВОДИТЕЛЬНОСТЬ");item(c,"◎","Performance Center","Профили • память • батарея • трафик • вкладки","›",this::performanceCenter);item(c,"▶","Видео и производительность","Настройка нагрузки на планшет • диагностика","›",this::videoSettings);section(c,"БЕЗОПАСНОСТЬ И МОДУЛИ");item(c,"▣","Module Manager","Локальные инструменты • управление запуском","›",this::moduleManager);item(c,">_","DevSuite","Eruda • xterm • CyberChef • Linux • прокси","›",()->devSuitePanel());item(c,"◈","VPN • WireGuard",vpn.active()?"Туннель включён":"Отключён","›",()->vpnPanel());item(c,"◈","Конфиденциальность","Cookies, история, реклама и трекеры","›",()->privacy());item(c,"◈","AdBlock Pro","uBlock Origin • управление фильтрами","›",this::adBlockPanel);item(c,"◎","DNS Manager","Системный DNS / DNS-over-HTTPS","›",this::dnsPanel);item(c,"✧","Расширения и скрипты","GeckoView • XPI / JS","›",()->addonManage());item(c,"◎","Tor Engine","Встроенный клиент • текстовый просмотр .onion","›",()->openTor(""));section(c,"ФАЙЛЫ И ДАННЫЕ");item(c,"↓","Загрузки","Менеджер файлов","›",()->downloadPanel());item(c,"▤","File & Document Center","Папки • архивы • PDF • текст • HEX","›",()->startActivity(new Intent(this,FileCenterActivity.class)));item(c,"⚙","Download Accelerator","Очередь и число параллельных скачиваний","›",this::downloadSettings);item(c,"▶","Media Center Pro","Локальные файлы • PiP • плейлист • EQ","›",()->startActivity(new Intent(this,MediaCenterActivity.class)));item(c,"×","Очистить данные","История и данные сайтов","›",()->clearData());section(c,"О ПРИЛОЖЕНИИ");item(c,"↻","Обновление браузера","Локальный дельта-патч .aeb","›",()->updatePanel());item(c,"⚡","AetherBolt Browser","0.8.9 Alpha • GeckoView 161","›",()->notice("AetherBolt","Beyond the Limits. GeckoView • XPI. Tor Engine — экспериментальный текстовый просмотр; не полноценный Tor Browser."));}
+    private void settings(){LinearLayout c=panel("Настройки","Управление AetherBolt Browser",false);section(c,"ПЕРСОНАЛИЗАЦИЯ");item(c,"⌕","Поисковая система",engineName,"›",()->engineDialog());item(c,"◎","Язык результатов",searchLanguageName()+" • "+SearchLanguage.support(engineTemplate),"›",()->searchLanguages());item(c,"✧","Внешний вид",appearance,"›",()->themes());item(c,"▣","Настройки сайтов","JavaScript, изображения, ПК, масштаб, медиа","›",()->webOptions());section(c,"ПРОИЗВОДИТЕЛЬНОСТЬ");item(c,"◎","Performance Center","Профили • память • батарея • трафик • вкладки","›",this::performanceCenter);item(c,"▶","Видео и производительность","Настройка нагрузки на планшет • диагностика","›",this::videoSettings);section(c,"БЕЗОПАСНОСТЬ И МОДУЛИ");item(c,"▣","Module Manager","Локальные инструменты • управление запуском","›",this::moduleManager);item(c,">_","DevSuite","Eruda • xterm • CyberChef • Linux • прокси","›",()->devSuitePanel());item(c,"◈","DevSuite Security","Кодирование • диагностика • расширения","›",this::securityCenter);item(c,"◈","VPN • WireGuard",vpn.active()?"Туннель включён":"Отключён","›",()->vpnPanel());item(c,"◈","Конфиденциальность","Cookies, история, реклама и трекеры","›",()->privacy());item(c,"◈","AdBlock Pro","uBlock Origin • управление фильтрами","›",this::adBlockPanel);item(c,"◎","DNS Manager","Системный DNS / DNS-over-HTTPS","›",this::dnsPanel);item(c,"✧","Расширения и скрипты","GeckoView • XPI / JS","›",()->addonManage());item(c,"◎","Tor Engine","Встроенный клиент • текстовый просмотр .onion","›",()->openTor(""));section(c,"ФАЙЛЫ И ДАННЫЕ");item(c,"↓","Загрузки","Менеджер файлов","›",()->downloadPanel());item(c,"▤","File & Document Center","Папки • архивы • PDF • текст • HEX","›",()->startActivity(new Intent(this,FileCenterActivity.class)));item(c,"⚙","Download Accelerator","Очередь и число параллельных скачиваний","›",this::downloadSettings);item(c,"▶","Media Center Pro","Локальные файлы • PiP • плейлист • EQ","›",()->startActivity(new Intent(this,MediaCenterActivity.class)));item(c,"×","Очистить данные","История и данные сайтов","›",()->clearData());section(c,"О ПРИЛОЖЕНИИ");item(c,"↻","Обновление браузера","Локальный дельта-патч .aeb","›",()->updatePanel());item(c,"⚡","AetherBolt Browser","0.9.0 Alpha • GeckoView 161","›",()->notice("AetherBolt","Beyond the Limits. GeckoView • XPI. Tor Engine — экспериментальный текстовый просмотр; не полноценный Tor Browser."));}
     private void clearData(){history.clear();closedPages.clear();for(Tab t:tabs)t.preview=null;prefs.edit().remove("workspaceTabs").remove("workspaceActive").apply();writeList("history",history);notice("История очищена","Данные сайтов Gecko не удалены; отдельный механизм ещё не перенесён.");}
 
     private void readList(String key,ArrayList<String> out){try{JSONArray a=new JSONArray(prefs.getString(key,"[]"));for(int i=0;i<a.length();i++)out.add(a.getString(i));}catch(JSONException ignored){}}
