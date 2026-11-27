@@ -34,6 +34,7 @@ public final class TorCenterActivity extends Activity {
     };
     @Override public void onCreate(Bundle state){
         super.onCreate(state);
+        if(!ModuleCatalog.guard(this,"tor")){finish();return;}
         getWindow().setStatusBarColor(BG);getWindow().setNavigationBarColor(BG);
         ScrollView scroll=new ScrollView(this);scroll.setFillViewport(true);scroll.setBackgroundColor(BG);
         LinearLayout c=new LinearLayout(this);c.setOrientation(LinearLayout.VERTICAL);c.setPadding(dp(16),dp(24),dp(16),dp(24));scroll.addView(c);

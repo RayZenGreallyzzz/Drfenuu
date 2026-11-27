@@ -68,6 +68,7 @@ public final class MediaCenterActivity extends Activity {
     }
     @Override public void onCreate(Bundle state){
         super.onCreate(state);
+        if(!ModuleCatalog.guard(this,"media")){closed=true;finish();return;}
         audioManager=(android.media.AudioManager)getSystemService(AUDIO_SERVICE);
         getWindow().setVolumeControlStream(android.media.AudioManager.STREAM_MUSIC);
         FrameLayout root=new FrameLayout(this);root.setBackgroundColor(0xff000000);
@@ -210,7 +211,7 @@ public final class MediaCenterActivity extends Activity {
     private void showControls(boolean show){show=show&&!pip();top.setVisibility(show?View.VISIBLE:View.GONE);controls.setVisibility(show?View.VISIBLE:View.GONE);handler.removeCallbacks(tick);if(show&&visible)handler.post(tick);immersive();}
     private void immersive(){if(pip())return;if(Build.VERSION.SDK_INT>=30){WindowInsetsController c=getWindow().getInsetsController();if(c!=null){c.setSystemBarsBehavior(WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);c.hide(WindowInsets.Type.systemBars());}}else getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_FULLSCREEN|View.SYSTEM_UI_FLAG_HIDE_NAVIGATION|View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY);}
     @Override public void onWindowFocusChanged(boolean hasFocus){super.onWindowFocusChanged(hasFocus);if(hasFocus)immersive();}
-    @Override protected void onStart(){super.onStart();visible=true;handler.removeCallbacks(tick);if(controls.getVisibility()==View.VISIBLE)handler.post(tick);}
+    @Override protected void onStart(){super.onStart();visible=true;handler.removeCallbacks(tick);if(controls!=null&&controls.getVisibility()==View.VISIBLE)handler.post(tick);}
     @Override protected void onStop(){visible=false;handler.removeCallbacks(tick);if(player!=null&&player.isPlaying())player.pause();abandonAudio();getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);super.onStop();}
     private void releasePlayer(){getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);abandonAudio();if(player!=null){try{player.setEventListener(null);player.stop();player.detachViews();player.release();}catch(Exception ignored){}player=null;}if(lib!=null){try{lib.release();}catch(Exception ignored){}lib=null;}if(file!=null){try{file.close();}catch(Exception ignored){}file=null;}}
     @Override protected void onDestroy(){closed=true;handler.removeCallbacksAndMessages(null);releasePlayer();videoPower.apply(getWindow(),false);super.onDestroy();}

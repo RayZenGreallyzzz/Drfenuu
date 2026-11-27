@@ -15,7 +15,7 @@ import java.util.concurrent.*;
 import java.util.zip.*;
 
 public final class DocumentCenterActivity extends Activity {
-    private static final int EXPORT=950,MAX_TEXT=256*1024,MAX_EXTRACT=64*1024*1024;
+    private static final int EXPORT=950,SELECT_DOC=951,MAX_TEXT=256*1024,MAX_EXTRACT=64*1024*1024;
     private final ExecutorService worker=Executors.newSingleThreadExecutor();
     private Uri uri;private String name,mime,mode;
     private LinearLayout root,content,nav;
@@ -28,7 +28,7 @@ public final class DocumentCenterActivity extends Activity {
     private TextView text(String t,int size){TextView v=new TextView(this);v.setText(t);v.setTextSize(size);v.setTextColor(0xffedf2ff);v.setPadding(dp(8),dp(8),dp(8),dp(8));return v;}
     private void button(LinearLayout r,String title,Runnable fn){Button b=new Button(this);b.setText(title);b.setAllCaps(false);b.setOnClickListener(v->{if(!busy)fn.run();});r.addView(b,new LinearLayout.LayoutParams(0,dp(48),1));}
     @Override public void onCreate(Bundle state){
-        super.onCreate(state);uri=getIntent().getData();if(uri==null||!"content".equals(uri.getScheme())){finish();return;}
+        super.onCreate(state);if(!ModuleCatalog.guard(this,"documents")){finish();return;}uri=getIntent().getData();if(uri==null){try{startActivityForResult(new Intent(Intent.ACTION_OPEN_DOCUMENT).setType("*/*").addCategory(Intent.CATEGORY_OPENABLE).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION),SELECT_DOC);}catch(Exception e){finish();}return;}if(!"content".equals(uri.getScheme())){finish();return;}
         mime=getIntent().getType();name=getIntent().getStringExtra("title");if(name==null)try(Cursor c=getContentResolver().query(uri,new String[]{OpenableColumns.DISPLAY_NAME},null,null,null)){if(c!=null&&c.moveToFirst())name=c.getString(0);}catch(Exception ignored){}if(name==null)name="Документ";
         root=new LinearLayout(this);root.setOrientation(1);root.setPadding(dp(10),dp(6),dp(10),dp(6));root.setBackgroundColor(0xff0b1020);
         heading=text(name,20);root.addView(heading);LinearLayout tools=new LinearLayout(this);button(tools,"Назад",this::finish);button(tools,"Текст",()->load("text"));button(tools,"HEX",()->load("hex"));button(tools,"Внешний",this::external);root.addView(tools);
@@ -96,7 +96,7 @@ public final class DocumentCenterActivity extends Activity {
         try{startActivityForResult(new Intent(Intent.ACTION_CREATE_DOCUMENT).setType("application/octet-stream").addCategory(Intent.CATEGORY_OPENABLE).putExtra(Intent.EXTRA_TITLE,filename),EXPORT);}catch(Exception e){archiveIndex=-1;status.setText("Не удалось выбрать файл");}
     }
     @Override protected void onActivityResult(int req,int result,Intent data){
-        super.onActivityResult(req,result,data);if(req!=EXPORT)return;int index=archiveIndex;archiveIndex=-1;
+        super.onActivityResult(req,result,data);if(req==SELECT_DOC){if(result==RESULT_OK&&data!=null&&data.getData()!=null&&"content".equals(data.getData().getScheme())){Uri chosen=data.getData();startActivity(new Intent(this,DocumentCenterActivity.class).setDataAndType(chosen,getContentResolver().getType(chosen)).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION));}finish();return;}if(req!=EXPORT)return;int index=archiveIndex;archiveIndex=-1;
         if(result!=RESULT_OK||data==null||data.getData()==null||index==-1)return;Uri target=data.getData();if(uri.equals(target)){status.setText("Нельзя перезаписать исходный архив");return;}
         run(()->{
             try(OutputStream out=getContentResolver().openOutputStream(target,"w");InputStream raw=input()){

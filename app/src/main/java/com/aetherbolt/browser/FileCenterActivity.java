@@ -38,7 +38,7 @@ public final class FileCenterActivity extends Activity {
     private void button(LinearLayout p,String title,Runnable r){Button b=new Button(this);b.setText(title);b.setAllCaps(false);b.setOnClickListener(v->r.run());p.addView(b,new LinearLayout.LayoutParams(0,dp(50),1));}
     private LinearLayout row(){LinearLayout r=new LinearLayout(this);r.setOrientation(LinearLayout.HORIZONTAL);return r;}
     @Override public void onCreate(Bundle state){
-        super.onCreate(state);LinearLayout root=new LinearLayout(this);root.setOrientation(1);root.setPadding(dp(12),dp(8),dp(12),dp(8));root.setBackgroundColor(BG);
+        super.onCreate(state);if(!ModuleCatalog.guard(this,"files")){finish();return;}LinearLayout root=new LinearLayout(this);root.setOrientation(1);root.setPadding(dp(12),dp(8),dp(12),dp(8));root.setBackgroundColor(BG);
         root.addView(text("File & Document Center",22));
         LinearLayout top=row();button(top,"Папка",()->choose(ROOT));button(top,"Открыть файл",()->choose(OPEN));button(top,"Назад",this::up);root.addView(top);
         path=text("Выберите папку Android",13);root.addView(path);status=text("Доступ только к выбранным файлам и папкам",13);root.addView(status);
@@ -118,7 +118,7 @@ public final class FileCenterActivity extends Activity {
         if(busy)return;
         new AlertDialog.Builder(this).setTitle(n.name).setItems(new String[]{"Переименовать","Поделиться","Открыть внешним приложением"},(d,i)->{
             if(i==0)nameDialog("Переименовать",n.name,name->task(()->{if(DocumentsContract.renameDocument(getContentResolver(),n.uri,name)==null)throw new IOException("Переименование не поддерживается");return "Переименовано";},this::refresh));
-            else if(!n.dir())try{Intent intent=i==1?new Intent(Intent.ACTION_SEND).setType(n.mime).putExtra(Intent.EXTRA_STREAM,n.uri).setClipData(ClipData.newRawUri(n.name,n.uri)):new Intent(Intent.ACTION_VIEW).setDataAndType(n.uri,n.mime);startActivity(Intent.createChooser(intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION),"Выберите приложение"));}catch(Exception e){status.setText("Нет подходящего приложения");}
+            else if(!n.dir())try{Intent intent=i==1?new Intent(Intent.ACTION_SEND).setType(n.mime).putExtra(Intent.EXTRA_STREAM,n.uri):new Intent(Intent.ACTION_VIEW).setDataAndType(n.uri,n.mime);if(i==1)intent.setClipData(ClipData.newRawUri(n.name,n.uri));startActivity(Intent.createChooser(intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION),"Выберите приложение"));}catch(Exception e){status.setText("Нет подходящего приложения");}
         }).show();
     }
     private List<Node> chosenFiles(){if(busy||selected.isEmpty()){status.setText("Выберите файлы");return null;}for(Node n:selected.values())if(n.dir()){status.setText("Для этой операции выберите только файлы");return null;}return new ArrayList<>(selected.values());}
