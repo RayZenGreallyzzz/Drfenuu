@@ -1,0 +1,2 @@
+# 0.9.7.1 navigation usability
+Compact scrollable upper-right menu, optional top menu on tablet with bottom fallback. Searchable grouped settings, URL search and individual delete for history/bookmarks, explicit clear data link, share URL, text reader/snapshot. Retain original cosmic design and developer/plugin shortcuts. Existing history schema stores URLs only, so no fabricated visit dates or titles; search covers URLs. No new dependencies. Previous popup API compilation issue addressed in parent commit; device validation pending.

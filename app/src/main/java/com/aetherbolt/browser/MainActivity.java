@@ -22,7 +22,7 @@ public class MainActivity extends Activity {
     private HorizontalScrollView tabStrip;
     private ScrollView sideStrip;
     private LinearLayout sideTabs;
-    private TextView quickTools,pluginButton;
+    private TextView quickTools,pluginButton,topMenu;
     private ImageView pinnedAddon;
     private TextView pinnedStatus;
     private LinearLayout pinnedBox;
@@ -36,6 +36,7 @@ public class MainActivity extends Activity {
         if(tabStrip==null||sideStrip==null)return;
         boolean side=sideEnabled();sideStrip.setVisibility(side?View.VISIBLE:View.GONE);
         tabStrip.setVisibility(!fullscreenUi&&!side&&getResources().getConfiguration().screenWidthDp>=600?View.VISIBLE:View.GONE);
+        if(topMenu!=null)topMenu.setVisibility(getResources().getConfiguration().screenWidthDp>=600?View.VISIBLE:View.GONE);
         if(quickTools!=null)quickTools.setVisibility(prefs.getBoolean("advancedToolbar",true)?View.VISIBLE:View.GONE);
     }
     private AetherStartupView startup;
@@ -193,7 +194,7 @@ public class MainActivity extends Activity {
         add(toolBar,button("↻","Обновить",()->{if(!current().home&&current().session!=null)current().session.reload();}),44,44);pluginButton=button("🧩","Расширения",this::quickAddons);add(toolBar,pluginButton,44,44);
         pinnedBox=column();pinnedBox.setGravity(Gravity.CENTER);pinnedBox.setBackground(ripple(PANEL,12,0xff2a3352));pinnedAddon=new ImageView(this);pinnedAddon.setScaleType(ImageView.ScaleType.FIT_CENTER);pinnedBox.addView(pinnedAddon,new LinearLayout.LayoutParams(dp(23),dp(23)));pinnedStatus=label("",10,CYAN);pinnedStatus.setGravity(Gravity.CENTER);pinnedBox.addView(pinnedStatus);pinnedBox.setVisibility(View.GONE);
         pinnedBox.setOnClickListener(v->{WebExtension e=registeredAddons.get(pinnedId);if(e!=null)launchAddon(e);else quickAddons();});pinnedBox.setOnLongClickListener(v->{quickAddons();return true;});add(toolBar,pinnedBox,46,46);
-        quickTools=button(">_","DevSuite",()->devSuitePanel());add(toolBar,quickTools,44,44);root.addView(toolBar);pinnedId=prefs.getString("pinnedAddon","");
+        quickTools=button(">_","DevSuite",()->devSuitePanel());add(toolBar,quickTools,44,44);topMenu=button("☰","Меню",this::menu);add(toolBar,topMenu,44,44);root.addView(toolBar);pinnedId=prefs.getString("pinnedAddon","");
         progress=new ProgressBar(this,null,android.R.attr.progressBarStyleHorizontal);progress.setMax(100);progress.setProgressTintList(android.content.res.ColorStateList.valueOf(CYAN));root.addView(progress,new LinearLayout.LayoutParams(-1,dp(3)));progress.setVisibility(View.INVISIBLE);
         LinearLayout workspace=row();workspace.setGravity(Gravity.TOP);
         sideStrip=new ScrollView(this);sideStrip.setFillViewport(true);sideTabs=column();sideTabs.setPadding(dp(6),dp(4),dp(6),dp(4));sideTabs.setBackgroundColor(PANEL);sideStrip.addView(sideTabs,new ScrollView.LayoutParams(-1,-2));workspace.addView(sideStrip,new LinearLayout.LayoutParams(dp(220),-1));
@@ -266,7 +267,7 @@ public class MainActivity extends Activity {
         String[] names={"Google","DuckDuckGo","Bing","Brave Search","Qwant","Яндекс","Ahmia","Добавить"};String[] icons={"G","D","b","B","Q","Я","◎","+"};int[] colors={0xff79aaff,0xffff9c50,CYAN,0xffff855d,PURPLE,0xffff7d8a,0xffc69cff,TEXT};Runnable[] actions=new Runnable[8];for(int i=0;i<6;i++){final int n=i;actions[i]=()->setEngine(Router.ENGINES[n][0],Router.ENGINES[n][1]);}actions[6]=()->setEngine(Router.ENGINES[10][0],Router.ENGINES[10][1]);actions[7]=()->customEngine();
         int cols=getResources().getConfiguration().screenWidthDp>=720?8:4;grid(box,names,icons,colors,actions,cols);
         grid(box,new String[]{"Дополнения","Загрузки","Закладки","История","Настройки","Вкладки"},new String[]{"✧","↓","☆","◷","⚙","▣"},new int[]{PURPLE,CYAN},new Runnable[]{()->quickAddons(),()->downloadPanel(),()->listDialog("Закладки",bookmarks,"bookmarks"),()->listDialog("История",history,"history"),()->settings(),()->tabDialog()},getResources().getConfiguration().screenWidthDp>=650?6:3);
-        TextView note=label("GECKO ALPHA 0.9.7   •   Tor Engine • эксперимент",11,MUTED);note.setGravity(Gravity.CENTER);add(box,note,-1,28);return sc;
+        TextView note=label("GECKO ALPHA 0.9.7.1   •   Tor Engine • эксперимент",11,MUTED);note.setGravity(Gravity.CENTER);add(box,note,-1,28);return sc;
     }
 
     private android.graphics.drawable.Drawable ripple(int color,int radius,int stroke){return new android.graphics.drawable.RippleDrawable(android.content.res.ColorStateList.valueOf(0x337f8cff),shape(color,radius,stroke),null);}
@@ -278,7 +279,7 @@ public class MainActivity extends Activity {
         overlay=new FrameLayout(this);overlay.setBackgroundColor(sheet?0xa0050916:BG);shell.addView(overlay,new FrameLayout.LayoutParams(-1,-1));overlay.setOnClickListener(v->panelBack());
         LinearLayout card=column();card.setClickable(true);card.setPadding(dp(16),dp(14),dp(16),dp(14));card.setBackground(sheet?glass(26,0xff6552a3):glass(0,0));
         FrameLayout.LayoutParams cp=new FrameLayout.LayoutParams(-1,sheet?-2:-1,sheet?Gravity.BOTTOM|Gravity.CENTER_HORIZONTAL:Gravity.CENTER);
-        if(sheet){cp.width=Math.min(getResources().getDisplayMetrics().widthPixels-dp(20),dp(620));cp.bottomMargin=dp(12);if(title.equals("Расширения")){cp.gravity=Gravity.TOP|Gravity.END;cp.width=Math.min(cp.width,dp(420));cp.topMargin=toolBar.getBottom()+dp(4);cp.rightMargin=dp(8);cp.bottomMargin=0;}}
+        if(sheet){cp.width=Math.min(getResources().getDisplayMetrics().widthPixels-dp(20),dp(620));cp.bottomMargin=dp(12);if(title.equals("Расширения")||title.equals("AetherBolt")){cp.gravity=Gravity.TOP|Gravity.END;cp.width=Math.min(cp.width,dp(420));cp.topMargin=toolBar.getBottom()+dp(4);cp.rightMargin=dp(8);cp.bottomMargin=0;cp.height=Math.min(dp(780),Math.max(dp(180),shell.getHeight()-cp.topMargin-dp(20)));}}
         overlay.addView(card,cp);if(!sheet){card.setPadding(dp(16),dp(14),dp(16),dp(14));}
         if(sheet){View grip=new View(this);grip.setBackground(shape(0xff53607c,3,0));LinearLayout.LayoutParams gp=new LinearLayout.LayoutParams(dp(42),dp(4));gp.gravity=Gravity.CENTER_HORIZONTAL;gp.bottomMargin=dp(12);card.addView(grip,gp);}
         LinearLayout head=row();add(head,button("‹","Назад",()->panelBack()),44,44);LinearLayout words=column();words.setPadding(dp(10),0,0,0);TextView name=label(title,23,TEXT);name.setTypeface(Typeface.DEFAULT,Typeface.BOLD);words.addView(name);if(!subtitle.isEmpty())words.addView(label(subtitle,12,MUTED));head.addView(words,new LinearLayout.LayoutParams(0,-2,1));ImageView mark=new ImageView(this);mark.setImageResource(R.drawable.bolt);add(head,mark,36,36);card.addView(head);View divider=new View(this);divider.setBackground(new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT,new int[]{0x0053ddfb,0xff6655bd,0x0053ddfb}));card.addView(divider,new LinearLayout.LayoutParams(-1,dp(1)));
@@ -1058,17 +1059,38 @@ public class MainActivity extends Activity {
     @Override protected void onPause(){if(!tabs.isEmpty())saveTabs();super.onPause();}
     @Override protected void onStop(){if(videoSuspend)for(Tab t:tabs)setSessionActive(t,false,false);super.onStop();}
     @Override protected void onStart(){super.onStart();if(prefs!=null)applyVideoPower();if(!tabs.isEmpty()){Tab t=current(),logical=addonContext();for(Tab other:tabs)setSessionActive(other,other==t&&!t.home&&!t.crashed,other==logical&&!logical.home);}}
+    private void compactItem(LinearLayout c,String symbol,String title,Runnable action){
+        LinearLayout r=row();r.setGravity(Gravity.CENTER_VERTICAL);r.setPadding(dp(10),0,dp(10),0);r.setBackground(ripple(PANEL,10,0xff303856));
+        ImageView image=new ImageView(this);image.setImageDrawable(icon(symbol,CYAN,20));add(r,image,28,28);
+        TextView name=label(title,15,TEXT);name.setGravity(Gravity.CENTER_VERTICAL);name.setPadding(dp(8),0,0,0);r.addView(name,new LinearLayout.LayoutParams(0,-1,1));
+        r.setMinimumHeight(dp(48));r.setContentDescription(title);r.setOnClickListener(v->action.run());r.setFocusable(true);add(c,r,-1,48);
+    }
     private void menu(){
         LinearLayout c=panel("AetherBolt","Быстрый доступ",true);
-        section(c,"БРАУЗЕР");
-        item(c,"×","Очистить данные","История и кэш","›",this::clearData);
-        grid(c,new String[]{"Закладки","История","Загрузки","Вкладки","Вперёд","Добавить закладку"},new String[]{"☆","◷","↓","▣","›","+"},new int[]{CYAN,PURPLE},new Runnable[]{()->listDialog("Закладки",bookmarks,"bookmarks"),()->listDialog("История",history,"history"),this::downloadPanel,this::tabDialog,()->{dismissPanel();if(!current().home&&current().session!=null&&current().canForward)current().session.goForward();},this::saveBookmark},3);
-        item(c,"▣","Версия сайта для ПК",desktop?"Включена • нажмите для мобильной версии":"Мобильная версия • нажмите для ПК",desktop?"●":"○",this::toggleDesktopPage);
-        item(c,"▤","Чтение офлайн","Текст страницы и библиотека","›",this::offlinePanel);
-        item(c,">_","DevSuite","Панель разработчика • быстрый доступ","›",this::devSuitePanel);
-        item(c,"✧","Расширения","Установленные дополнения GeckoView","›",this::quickAddons);
-        item(c,"✧","Инструменты","AI, VPN, файлы и другие модули","›",this::toolsHub);
-        item(c,"⚙","Настройки","Удобство, внешний вид и дополнительные параметры","›",this::settings);
+        compactItem(c,"+","Новая вкладка",this::addTab);
+        compactItem(c,"▣","Открытые вкладки",this::tabDialog);
+        compactItem(c,"›","Вперёд",()->{dismissPanel();if(!current().home&&current().session!=null&&current().canForward)current().session.goForward();});
+        section(c,"ДАННЫЕ");
+        compactItem(c,"◷","История",()->listDialog("История",history,"history"));
+        compactItem(c,"×","Очистить данные браузера",this::clearData);
+        compactItem(c,"↓","Загрузки",this::downloadPanel);
+        compactItem(c,"☆","Закладки",()->listDialog("Закладки",bookmarks,"bookmarks"));
+        compactItem(c,"+","Добавить закладку",()->{dismissPanel();saveBookmark();});
+        section(c,"СТРАНИЦА");
+        compactItem(c,"↗","Поделиться страницей",this::shareCurrentPage);
+        compactItem(c,"▤","Сохранить текст офлайн",()->captureOffline(true));
+        compactItem(c,"▤","Режим чтения",()->captureOffline(false));
+        compactItem(c,"✧","Перевод / AI",this::aiPanel);
+        compactItem(c,"▣",desktop?"Версия для ПК • включена":"Версия для ПК • выключена",this::toggleDesktopPage);
+        section(c,"УПРАВЛЕНИЕ");
+        compactItem(c,"🧩","Расширения",this::quickAddons);
+        compactItem(c,">_","DevSuite",this::devSuitePanel);
+        compactItem(c,"⚙","Настройки",this::settings);
+        compactItem(c,"✧","Другие инструменты",this::toolsHub);
+    }
+    private void shareCurrentPage(){
+        if(tabs.isEmpty()||current().home||Router.parse(current().url).kind!=Router.Kind.WEB){toast("Откройте веб-страницу");return;}
+        String url=current().url;dismissPanel();startActivity(Intent.createChooser(new Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT,url),"Поделиться страницей"));
     }
     private void toolsHub(){
         LinearLayout c=panel("Инструменты","Дополнительные возможности AetherBolt",false);
@@ -1250,19 +1272,36 @@ public class MainActivity extends Activity {
         }
     }
     private void settings(){
-        LinearLayout c=panel("Настройки","Основные параметры",false);
-        item(c,"▣","Удобство интерфейса","Вкладки, простой режим, клавиатура","›",this::desktopModePanel);
-        item(c,"✧","Внешний вид",appearance,"›",this::themes);
-        item(c,"⌕","Поисковая система",engineName,"›",this::engineDialog);
-        item(c,"▣","Настройки сайтов","Мобильный / компьютерный режим","›",this::webOptions);
-        item(c,"▶","Видео и производительность","Энергосбережение и диагностика","›",this::videoSettings);
-        item(c,"◈","Конфиденциальность","История, блокировка, DNS","›",this::privacy);
-        item(c,"×","Очистить данные","Кэш, история и cookies","›",this::clearData);
-        item(c,"▤","Backup Center","Резервные копии","›",this::backupPanel);
-        item(c,"✧","Инструменты и модули","AI, VPN, файлы, расширения","›",this::toolsHub);
-        item(c,"⚙","Все настройки","Полный список функций и обновления","›",this::allSettings);
+        LinearLayout c=panel("Настройки","AetherBolt",false);
+        EditText search=field("Поиск настроек");search.setSingleLine(true);add(c,search,-1,50);
+        LinearLayout results=column();c.addView(results);
+        String[][] names={
+            {"Основные","⌕","Поисковая система",engineName+" • поиск"},
+            {"Основные","◈","Конфиденциальность и безопасность","История • cookies • DNS • защита"},
+            {"Основные","×","Очистить данные","Кэш • история • cookies"},
+            {"Основные","◈","Password Vault","Пароли • хранилище"},
+            {"Интерфейс","▣","Вкладки и интерфейс","Боковая панель • клавиатура"},
+            {"Интерфейс","✧","Внешний вид",appearance+" • темы"},
+            {"Интерфейс","▣","Настройки сайтов","Мобильный / компьютерный режим"},
+            {"Интерфейс","◎","Язык поиска",searchLanguageName()},
+            {"Производительность","▶","Видео и производительность","Частота • энергия • диагностика"},
+            {"Производительность","◎","Performance Center","Память • трафик • фоновые вкладки"},
+            {"Данные и инструменты","↓","Скачанные файлы","Загрузки"},
+            {"Данные и инструменты","▤","Backup Center","Резервные копии"},
+            {"Данные и инструменты","🧩","Расширения","Магазин • плагины"},
+            {"Данные и инструменты",">_","DevSuite","Разработчик • HTTP • сеть"},
+            {"Данные и инструменты","✧","AI Center","GPT • перевод"},
+            {"Данные и инструменты","✧","Другие инструменты","VPN • медиа • файлы • Tor"},
+            {"Дополнительно","⚙","Все настройки","Полный список и обновления"}
+        };
+        Runnable[] actions={this::engineDialog,this::privacy,this::clearData,()->startActivity(new Intent(this,PasswordVaultActivity.class)),this::desktopModePanel,this::themes,this::webOptions,this::searchLanguages,this::videoSettings,this::performanceCenter,this::downloadPanel,this::backupPanel,this::quickAddons,this::devSuitePanel,this::aiPanel,this::toolsHub,this::allSettings};
+        Runnable render=()->{results.removeAllViews();String q=search.getText().toString().trim().toLowerCase(Locale.ROOT),group="";int n=0;
+            for(int i=0;i<names.length;i++){String[] r=names[i];if(!String.join(" ",r).toLowerCase(Locale.ROOT).contains(q))continue;if(q.isEmpty()&&!group.equals(r[0])){group=r[0];section(results,group);}item(results,r[1],r[2],r[3],"›",actions[i]);n++;}
+            if(n==0)results.addView(label("Ничего не найдено",15,MUTED));
+        };
+        search.addTextChangedListener(new android.text.TextWatcher(){public void beforeTextChanged(CharSequence s,int a,int n,int f){}public void onTextChanged(CharSequence s,int a,int b,int n){render.run();}public void afterTextChanged(android.text.Editable e){}});render.run();
     }
-    private void allSettings(){LinearLayout c=panel("Все настройки","Управление AetherBolt Browser",false);section(c,"ПЕРСОНАЛИЗАЦИЯ");item(c,"⌕","Поисковая система",engineName,"›",()->engineDialog());item(c,"◎","Язык результатов",searchLanguageName()+" • "+SearchLanguage.support(engineTemplate),"›",()->searchLanguages());item(c,"✧","Внешний вид",appearance,"›",()->themes());item(c,"▣","Настройки сайтов","JavaScript, изображения, ПК, масштаб, медиа","›",()->webOptions());section(c,"ПРОИЗВОДИТЕЛЬНОСТЬ");item(c,"◎","Performance Center","Профили • память • батарея • трафик • вкладки","›",this::performanceCenter);item(c,"▶","Видео и производительность","Настройка нагрузки на планшет • диагностика","›",this::videoSettings);section(c,"БЕЗОПАСНОСТЬ И МОДУЛИ");item(c,"▣","Module Manager","Локальные инструменты • управление запуском","›",this::moduleManager);item(c,"✧","AI Center","GPT • ChatGPT Web • совместимые серверы","›",this::aiPanel);item(c,"◈","Password Vault","Локальное шифрованное хранилище","›",()->startActivity(new Intent(this,PasswordVaultActivity.class)));item(c,">_","DevSuite","Eruda • xterm • CyberChef • Linux • прокси","›",()->devSuitePanel());item(c,"◈","DevSuite Security","Кодирование • диагностика • расширения","›",this::securityCenter);item(c,"◈","VPN • WireGuard",vpn.active()?"Туннель включён":"Отключён","›",()->vpnPanel());item(c,"◈","Конфиденциальность","Cookies, история, реклама и трекеры","›",()->privacy());item(c,"◈","AdBlock Pro","uBlock Origin • управление фильтрами","›",this::adBlockPanel);item(c,"◎","DNS Manager","Системный DNS / DNS-over-HTTPS","›",this::dnsPanel);item(c,"✧","Расширения и скрипты","GeckoView • XPI / JS","›",()->addonManage());item(c,"◎","Tor Engine","Встроенный клиент • текстовый просмотр .onion","›",()->openTor(""));section(c,"ФАЙЛЫ И ДАННЫЕ");item(c,"▤","Backup Center","Зашифрованный экспорт и восстановление","›",this::backupPanel);item(c,"↓","Загрузки","Менеджер файлов","›",()->downloadPanel());item(c,"▤","File & Document Center","Папки • архивы • PDF • текст • HEX","›",()->startActivity(new Intent(this,FileCenterActivity.class)));item(c,"▤","Offline Browser","Снимки страниц • библиотека • режим чтения","›",this::offlinePanel);item(c,"⚙","Download Accelerator","Очередь и число параллельных скачиваний","›",this::downloadSettings);item(c,"▶","Media Center Pro","Локальные файлы • PiP • плейлист • EQ","›",()->startActivity(new Intent(this,MediaCenterActivity.class)));item(c,"×","Очистить данные","Кэш, история и cookies","›",()->clearData());section(c,"О ПРИЛОЖЕНИИ");item(c,"↻","Обновление браузера","Локальный дельта-патч .aeb","›",()->updatePanel());item(c,"⚡","AetherBolt Browser","0.9.7 Alpha • GeckoView 161","›",()->notice("AetherBolt","Beyond the Limits. GeckoView • XPI. Tor Engine — экспериментальный текстовый просмотр; не полноценный Tor Browser."));}
+    private void allSettings(){LinearLayout c=panel("Все настройки","Управление AetherBolt Browser",false);section(c,"ПЕРСОНАЛИЗАЦИЯ");item(c,"⌕","Поисковая система",engineName,"›",()->engineDialog());item(c,"◎","Язык результатов",searchLanguageName()+" • "+SearchLanguage.support(engineTemplate),"›",()->searchLanguages());item(c,"✧","Внешний вид",appearance,"›",()->themes());item(c,"▣","Настройки сайтов","JavaScript, изображения, ПК, масштаб, медиа","›",()->webOptions());section(c,"ПРОИЗВОДИТЕЛЬНОСТЬ");item(c,"◎","Performance Center","Профили • память • батарея • трафик • вкладки","›",this::performanceCenter);item(c,"▶","Видео и производительность","Настройка нагрузки на планшет • диагностика","›",this::videoSettings);section(c,"БЕЗОПАСНОСТЬ И МОДУЛИ");item(c,"▣","Module Manager","Локальные инструменты • управление запуском","›",this::moduleManager);item(c,"✧","AI Center","GPT • ChatGPT Web • совместимые серверы","›",this::aiPanel);item(c,"◈","Password Vault","Локальное шифрованное хранилище","›",()->startActivity(new Intent(this,PasswordVaultActivity.class)));item(c,">_","DevSuite","Eruda • xterm • CyberChef • Linux • прокси","›",()->devSuitePanel());item(c,"◈","DevSuite Security","Кодирование • диагностика • расширения","›",this::securityCenter);item(c,"◈","VPN • WireGuard",vpn.active()?"Туннель включён":"Отключён","›",()->vpnPanel());item(c,"◈","Конфиденциальность","Cookies, история, реклама и трекеры","›",()->privacy());item(c,"◈","AdBlock Pro","uBlock Origin • управление фильтрами","›",this::adBlockPanel);item(c,"◎","DNS Manager","Системный DNS / DNS-over-HTTPS","›",this::dnsPanel);item(c,"✧","Расширения и скрипты","GeckoView • XPI / JS","›",()->addonManage());item(c,"◎","Tor Engine","Встроенный клиент • текстовый просмотр .onion","›",()->openTor(""));section(c,"ФАЙЛЫ И ДАННЫЕ");item(c,"▤","Backup Center","Зашифрованный экспорт и восстановление","›",this::backupPanel);item(c,"↓","Загрузки","Менеджер файлов","›",()->downloadPanel());item(c,"▤","File & Document Center","Папки • архивы • PDF • текст • HEX","›",()->startActivity(new Intent(this,FileCenterActivity.class)));item(c,"▤","Offline Browser","Снимки страниц • библиотека • режим чтения","›",this::offlinePanel);item(c,"⚙","Download Accelerator","Очередь и число параллельных скачиваний","›",this::downloadSettings);item(c,"▶","Media Center Pro","Локальные файлы • PiP • плейлист • EQ","›",()->startActivity(new Intent(this,MediaCenterActivity.class)));item(c,"×","Очистить данные","Кэш, история и cookies","›",()->clearData());section(c,"О ПРИЛОЖЕНИИ");item(c,"↻","Обновление браузера","Локальный дельта-патч .aeb","›",()->updatePanel());item(c,"⚡","AetherBolt Browser","0.9.7.1 Alpha • GeckoView 161","›",()->notice("AetherBolt","Beyond the Limits. GeckoView • XPI. Tor Engine — экспериментальный текстовый просмотр; не полноценный Tor Browser."));}
     private void clearData(){
         if(clearingData){toast("Очистка уже выполняется");return;}
         LinearLayout c=panel("Очистка данных","История • кэш • данные сайтов",false);
@@ -1294,7 +1333,24 @@ public class MainActivity extends Activity {
     private void writeList(String key,ArrayList<String> data){prefs.edit().putString(key,new JSONArray(data).toString()).apply();}
     private void remember(ArrayList<String> data,String key,String url,int cap){data.remove(url);data.add(0,url);while(data.size()>cap)data.remove(data.size()-1);writeList(key,data);}
     private void saveBookmark(){Tab t=current();String u=t.url;if(t.home||u==null||Router.parse(u).kind!=Router.Kind.WEB){toast("Сначала откройте сайт");return;}remember(bookmarks,"bookmarks",u,200);toast("Закладка сохранена");}
-    private void listDialog(String title,ArrayList<String> data,String key){LinearLayout c=panel(title,data.size()+" записей",false);if(key.equals("history"))item(c,"×","История и кэш","Открыть очистку данных","›",this::clearData);if(data.isEmpty()){item(c,"☆","Пока пусто","Здесь появятся сохранённые страницы","",()->{});return;}for(String u:new ArrayList<>(data)){String host=Uri.parse(u).getHost();item(c,key.equals("history")?"◷":"☆",host==null?u:host,u,"›",()->{dismissPanel();navigate(u);});}item(c,"×","Очистить список","","›",()->{LinearLayout confirm=panel("Очистить список?","Действие нельзя отменить",true);item(confirm,"×","Удалить все записи","","",()->{data.clear();writeList(key,data);listDialog(title,data,key);});item(confirm,"‹","Отмена","","",()->listDialog(title,data,key));});}
+    private void listDialog(String title,ArrayList<String> data,String key){
+        boolean isHistory="history".equals(key);LinearLayout c=panel(title,"Поиск и управление",false);
+        EditText search=field(isHistory?"Поиск в истории":"Поиск в закладках");search.setSingleLine(true);add(c,search,-1,50);
+        if(isHistory)compactItem(c,"×","Очистить историю и кэш",this::clearData);
+        else compactItem(c,"×","Очистить закладки",()->new AlertDialog.Builder(this).setTitle("Удалить все закладки?").setNegativeButton("Отмена",null).setPositiveButton("Удалить",(d,w)->{data.clear();writeList(key,data);listDialog(title,data,key);}).show());
+        TextView count=label("",13,MUTED);c.addView(count);LinearLayout records=column();c.addView(records);
+        Runnable render=()->{records.removeAllViews();String q=search.getText().toString().trim().toLowerCase(Locale.ROOT);int shown=0;
+            for(String u:new ArrayList<>(data)){
+                if(!u.toLowerCase(Locale.ROOT).contains(q))continue;
+                LinearLayout line=row();line.setGravity(Gravity.CENTER_VERTICAL);line.setBackground(ripple(PANEL,12,0xff303856));LinearLayout words=column();words.setPadding(dp(10),dp(8),dp(4),dp(8));
+                String host=Uri.parse(u).getHost();TextView name=label(host==null?u:host,15,TEXT);name.setMaxLines(1);name.setEllipsize(android.text.TextUtils.TruncateAt.END);words.addView(name);
+                TextView url=label(u,12,MUTED);url.setMaxLines(2);url.setEllipsize(android.text.TextUtils.TruncateAt.END);words.addView(url);line.addView(words,new LinearLayout.LayoutParams(0,-2,1));
+                words.setOnClickListener(v->{dismissPanel();navigate(u);});add(line,button("×","Удалить запись",()->{data.remove(u);writeList(key,data);records.removeView(line);count.setText("Всего записей: "+data.size());}),44,44);add(records,line,-1,-2);shown++;
+            }
+            count.setText("Найдено: "+shown+" • всего: "+data.size());if(shown==0)records.addView(label("Нет записей",15,MUTED));
+        };
+        search.addTextChangedListener(new android.text.TextWatcher(){public void beforeTextChanged(CharSequence s,int a,int n,int f){}public void onTextChanged(CharSequence s,int a,int b,int n){render.run();}public void afterTextChanged(android.text.Editable e){}});render.run();
+    }
     @Override public void onConfigurationChanged(android.content.res.Configuration c){super.onConfigurationChanged(c);updateChrome();if(!fullscreenUi&&!tabs.isEmpty())showTab();else shell.requestApplyInsets();}
     @Override protected void onDestroy(){if(fullscreenUi)leaveFullscreen();chromeHandler.removeCallbacksAndMessages(null);if(transfers!=null)transfers.destroy();if(devSuite!=null)devSuite.stop();if(addonPopup!=null)addonPopup.dismiss();for(WebExtension e:registeredAddons.values()){e.setActionDelegate(null);e.setTabDelegate(null);}if(body!=null)body.removeAllViews();for(Tab t:tabs){if(t.session!=null){t.web.releaseSession();t.session.close();}}super.onDestroy();}
 }
