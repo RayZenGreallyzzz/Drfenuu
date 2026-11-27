@@ -15,13 +15,14 @@ android {
             }
         }
         targetSdk 35
-        versionCode 32
-        versionName '0.8.4-devsuite-alpha'
+        versionCode 33
+        versionName '0.8.5-devsuite-alpha'
     }
     compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
 }
 
 dependencies {
+    implementation 'info.guardianproject:tor-android:0.4.9.17'
     implementation 'org.videolan.android:libvlc-all:3.7.5'
     implementation 'org.mozilla.geckoview:geckoview:161.0.20261118180411'
     implementation 'androidx.core:core:1.19.1'
