@@ -24,6 +24,7 @@ final class BrowserPasswords implements Autocomplete.StorageDelegate {
     private final ExecutorService worker=Executors.newSingleThreadExecutor();
     private final Handler handler=new Handler(Looper.getMainLooper());
     private long until=0;
+    private String unlockedOrigin="";
     private int generation;
     private boolean closed,credentialPending,busy;
     private Runnable authSuccess,authCancel;
@@ -41,7 +42,7 @@ final class BrowserPasswords implements Autocomplete.StorageDelegate {
         }catch(Exception e){return "";}
     }
     private boolean allowed(){return !closed&&!ui.isFinishing()&&!ui.isDestroyed()&&enabled.getAsBoolean();}
-    boolean unlocked(){return allowed()&&SystemClock.elapsedRealtime()<until;}
+    boolean unlocked(){return allowed()&&SystemClock.elapsedRealtime()<until&&!unlockedOrigin.isEmpty()&&unlockedOrigin.equals(currentOrigin.get());}
     private void toast(String m){if(!closed&&!ui.isDestroyed())Toast.makeText(ui,m,Toast.LENGTH_SHORT).show();}
     private boolean valid(Autocomplete.LoginEntry e){
         String o=origin(e.origin);
@@ -73,14 +74,14 @@ final class BrowserPasswords implements Autocomplete.StorageDelegate {
     }
     private void finishAuth(boolean ok){
         Runnable yes=authSuccess,no=authCancel;authSuccess=null;authCancel=null;signal=null;credentialPending=false;busy=false;
-        if(ok&&allowed()){until=SystemClock.elapsedRealtime()+45000;if(yes!=null)yes.run();}else{until=0;if(no!=null)no.run();}
+        if(ok&&allowed()){unlockedOrigin=currentOrigin.get();until=SystemClock.elapsedRealtime()+45000;if(yes!=null)yes.run();}else{until=0;if(no!=null)no.run();}
     }
     boolean onActivityResult(int request,int result){
         if(request!=AUTH)return false;if(credentialPending)finishAuth(result==Activity.RESULT_OK);return true;
     }
-    void unlock(Runnable done){authenticate(()->{toast("Автозаполнение разблокировано на 45 секунд");done.run();},()->toast("Доступ отменён"));}
+    void unlock(Runnable done){if(currentOrigin.get().isEmpty()){toast("Сначала откройте HTTPS-сайт с формой входа");return;}authenticate(()->{toast("Автозаполнение разблокировано на 45 секунд");done.run();},()->toast("Доступ отменён"));}
     void lock(){
-        until=0;generation++;busy=false;credentialPending=false;
+        until=0;unlockedOrigin="";generation++;busy=false;credentialPending=false;
         Runnable no=authCancel;authCancel=null;authSuccess=null;
         if(signal!=null){CancellationSignal old=signal;signal=null;old.cancel();}
         if(dialog!=null){AlertDialog d=dialog;dialog=null;d.dismiss();}
