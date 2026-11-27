@@ -15,8 +15,8 @@ android {
             }
         }
         targetSdk 35
-        versionCode 53
-        versionName '0.9.7.7-devsuite-alpha'
+        versionCode 54
+        versionName '0.9.7.8-devsuite-alpha'
     }
     compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
 }

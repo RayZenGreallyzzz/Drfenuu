@@ -21,6 +21,11 @@ public class ScriptImportTest {
   t(zip("main.js","package.json").kind==ScriptImport.Kind.PROJECT);
   t(zip("src/a.py").kind==ScriptImport.Kind.PROJECT);
   t(zip("README.md").kind==ScriptImport.Kind.UNKNOWN);
+  t(zip("release/one.xpi","two.xpi").kind==ScriptImport.Kind.PACKAGE_ARCHIVE);
+  t(zip("release/one.xpi","two.xpi").packages.size()==2);
+  t(zip("../outside.xpi").kind==ScriptImport.Kind.UNKNOWN);
+  ByteArrayOutputStream wrapped=new ByteArrayOutputStream();try(ZipOutputStream z=new ZipOutputStream(wrapped)){z.putNextEntry(new ZipEntry("release/one.xpi"));z.write(new byte[]{1,2,3});z.closeEntry();}
+  ByteArrayOutputStream chosen=new ByteArrayOutputStream();ScriptImport.copyPackage(new ByteArrayInputStream(wrapped.toByteArray()),"release/one.xpi",chosen);t(java.util.Arrays.equals(chosen.toByteArray(),new byte[]{1,2,3}));
   t(zip("__MACOSX/a.js","a.js").scripts.size()==1);
   t(ScriptImport.read(new ByteArrayInputStream("alert(1)".getBytes(StandardCharsets.UTF_8)),"test.user.js").kind==ScriptImport.Kind.SCRIPTS);
   System.out.println("PASS: script import classification");
