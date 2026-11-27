@@ -12,6 +12,10 @@ public class ScriptImportTest {
   t(zip("folder/a.js").kind==ScriptImport.Kind.SCRIPTS);
   t(zip("a.js","b.user.js").scripts.size()==2);
   t(zip("a.js","folder/manifest.json").kind==ScriptImport.Kind.EXTENSION);
+  t(zip("a.js","folder/manifest.json").manifestCount==1);
+  t(zip("a.js","folder/manifest.json").manifestPath.equals("folder/manifest.json"));
+  t(zip("manifest.json","folder/manifest.json").manifestCount==2);
+  t(zip("manifest.json","folder/manifest.json").manifestPath.equals("manifest.json"));
   t(zip("manifest.json","META-INF/mozilla.rsa","a.js").kind==ScriptImport.Kind.SIGNED_PACKAGE);
   t(zip("src/a.ts","package.json").kind==ScriptImport.Kind.PROJECT);
   t(zip("main.js","package.json").kind==ScriptImport.Kind.PROJECT);

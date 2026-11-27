@@ -1,0 +1,1 @@
+browser.runtime.onMessage.addListener(m=>{if(m?.type==="ping")return Promise.resolve({pong:true});});

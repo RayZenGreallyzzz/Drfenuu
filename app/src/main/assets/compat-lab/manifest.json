@@ -1,0 +1,27 @@
+{
+  "manifest_version": 3,
+  "name": "AetherBolt Compatibility Lab",
+  "version": "1.0.0",
+  "description": "Local synthetic tests only; no host permissions or external access.",
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "compat-lab@aetherbolt.local",
+      "data_collection_permissions": {
+        "required": [
+          "none"
+        ]
+      }
+    }
+  },
+  "permissions": [
+    "storage"
+  ],
+  "background": {
+    "scripts": [
+      "background.js"
+    ]
+  },
+  "content_security_policy": {
+    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'; connect-src 'none';"
+  }
+}

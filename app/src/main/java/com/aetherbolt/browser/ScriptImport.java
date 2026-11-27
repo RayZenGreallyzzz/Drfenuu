@@ -15,8 +15,10 @@ public final class ScriptImport {
     public static final class Result {
         public final Kind kind;
         public final List<Candidate> scripts;
-        public final String detail;
-        Result(Kind k,List<Candidate> s,String d){kind=k;scripts=Collections.unmodifiableList(s);detail=d;}
+        public final String detail,manifestText,manifestPath;
+        public final int manifestCount;
+        Result(Kind k,List<Candidate> s,String d){this(k,s,d,"","",0);}
+        Result(Kind k,List<Candidate> s,String d,String manifestText,String manifestPath,int manifestCount){kind=k;scripts=Collections.unmodifiableList(s);detail=d;this.manifestText=manifestText;this.manifestPath=manifestPath;this.manifestCount=manifestCount;}
     }
     private static Result only(Kind k,String d){return new Result(k,Collections.emptyList(),d);}
     private static String decode(byte[] data)throws IOException{
@@ -38,7 +40,7 @@ public final class ScriptImport {
                 return new Result(Kind.SCRIPTS,Collections.singletonList(new Candidate(name,decode(out.toByteArray()))),"JavaScript");
             }
             boolean manifest=false,rootManifest=false,signature=false,packageJson=false,typescript=false,python=false,modules=false,oversize=false,tooMany=false;
-            int entries=0;long total=0;ArrayList<Candidate> scripts=new ArrayList<>();
+            int entries=0,manifestCount=0;String manifestText="",manifestPath="";long total=0;ArrayList<Candidate> scripts=new ArrayList<>();
             try(ZipInputStream zip=new ZipInputStream(raw)){
                 ZipEntry e;byte[] buf=new byte[8192];
                 while((e=zip.getNextEntry())!=null){
@@ -55,18 +57,20 @@ public final class ScriptImport {
                         typescript|=leaf.endsWith(".ts")||leaf.endsWith(".tsx")||leaf.endsWith(".svelte");
                         python|=leaf.endsWith(".py");modules|=leaf.endsWith(".mjs");
                     }
+                    boolean manifestFile=!ignored&&leaf.equals("manifest.json");if(manifestFile)manifestCount++;
                     boolean js=!ignored&&leaf.endsWith(".js")&&!leaf.startsWith("._");
-                    ByteArrayOutputStream out=js?new ByteArrayOutputStream():null;int n;
+                    ByteArrayOutputStream out=(js||manifestFile)?new ByteArrayOutputStream():null;int n;
                     while((n=zip.read(buf))!=-1){
                         total+=n;if(total>32L*1024*1024)throw new IOException("ZIP: лимит распаковки 32 МБ");
-                        if(out!=null){if(out.size()+n>ScriptRules.LIMIT){out=null;oversize=true;}else out.write(buf,0,n);}
+                        if(out!=null){if(out.size()+n>(manifestFile?128*1024:ScriptRules.LIMIT)){out=null;if(js)oversize=true;}else out.write(buf,0,n);}
                     }
-                    if(out!=null){if(scripts.size()>=32)tooMany=true;else scripts.add(new Candidate(path,decode(out.toByteArray())));}
+                    if(manifestFile){if(out!=null&&(manifestPath.isEmpty()||p.equals("manifest.json"))){manifestPath=path;try{manifestText=decode(out.toByteArray());}catch(IOException invalid){manifestText="";}}}
+                    else if(out!=null){if(scripts.size()>=32)tooMany=true;else {try{scripts.add(new Candidate(path,decode(out.toByteArray())));}catch(IOException invalid){/* not a text script */}}}
                 }
             }
             // Never treat extension background/content scripts or Node project files as user scripts.
-            if(rootManifest&&signature)return only(Kind.SIGNED_PACKAGE,"Пакет Firefox; подпись и совместимость проверит GeckoView.");
-            if(manifest)return only(Kind.EXTENSION,"WebExtension: нужен совместимый подписанный XPI Firefox. ZIP исходников и CRX Chromium не устанавливаются напрямую.");
+            if(rootManifest&&signature)return new Result(Kind.SIGNED_PACKAGE,Collections.emptyList(),"Пакет Firefox; подпись и совместимость проверит GeckoView.",manifestText,manifestPath,manifestCount);
+            if(manifest)return new Result(Kind.EXTENSION,Collections.emptyList(),"WebExtension: нужен совместимый подписанный XPI Firefox. ZIP исходников и CRX Chromium не устанавливаются напрямую.",manifestText,manifestPath,manifestCount);
             if(packageJson||typescript||python||modules)return only(Kind.PROJECT,"Исходный проект ("+(typescript?"TypeScript / сборка":packageJson?"Node.js / Electron":python?"Python":"ES modules")+"). Нужна соответствующая среда или готовое расширение.");
             if(scripts.isEmpty())return only(Kind.UNKNOWN,oversize?"В ZIP только JS больше 256 КБ":"В архиве нет самостоятельных JS");
             if(tooMany)throw new IOException("В ZIP больше 32 JavaScript-файлов; выберите нужные отдельно");
