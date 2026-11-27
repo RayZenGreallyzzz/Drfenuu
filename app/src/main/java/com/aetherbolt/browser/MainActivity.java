@@ -20,6 +20,8 @@ public class MainActivity extends Activity {
     private static final int BG=0xff0b1020, PANEL=0xff171e35, TEXT=0xffedf2ff, MUTED=0xffa5b1ce, PURPLE=0xffa78bfa, CYAN=0xff53ddfb;
     private LinearLayout root, tabsBar, toolBar; private FrameLayout body; private EditText address;
     private HorizontalScrollView tabStrip;
+    private AetherStartupView startup;
+    private long startupStart;
     private LinearLayout bottomBar;
     private Tab fullscreenTab;
     private boolean fullscreenKeptScreenOn;
@@ -113,7 +115,43 @@ public class MainActivity extends Activity {
         prefs=getSharedPreferences("aetherbolt", MODE_PRIVATE);
         engineName=prefs.getString("engineName", "Google"); engineTemplate=prefs.getString("engineTemplate", Router.ENGINES[0][1]); filter=prefs.getBoolean("filter", true);
         readList("bookmarks",bookmarks); readList("history",history); readList("downloads",downloads); loadOptions(); loadScripts();
-        if(runtime==null)runtime=GeckoRuntime.create(getApplicationContext()); extensions=runtime.getWebExtensionController(); vpn=BoltVpn.get(this);vpn.restore(err->{}); applyProtection(); transfers=new FileTransfers(this); build(); configureExtensions(); initScriptBridge(); devSuite=new DevSuiteFeature(this,runtime,()->tabs.isEmpty()||current().home?null:current().session,this::openLocalTool); devSuite.start(); restoreTabs();
+        boolean cold=runtime==null;
+        transfers=new FileTransfers(this);build();
+        if(cold){
+            startup=new AetherStartupView(this);startupStart=SystemClock.uptimeMillis();
+            startup.stage(1,"Настройки загружены");
+            shell.addView(startup,new FrameLayout.LayoutParams(-1,-1));
+            startup.postOnAnimation(()->startup.postOnAnimation(this::initializeBrowser));
+        }else initializeBrowser();
+    }
+    private void initializeBrowser(){
+        if(isDestroyed()||isFinishing())return;
+        try{
+            if(startup!=null)startup.stage(1,"Запуск GeckoView…");
+            if(runtime==null)runtime=GeckoRuntime.create(getApplicationContext());
+            extensions=runtime.getWebExtensionController();
+            vpn=BoltVpn.get(this);vpn.restore(err->{});applyProtection();
+            if(startup!=null){startup.stage(2,"Движок создан • подготовка вкладок");startup.postOnAnimation(this::finishBrowserInitialization);}
+            else finishBrowserInitialization();
+        }catch(RuntimeException e){startupError(e);}
+    }
+    private void finishBrowserInitialization(){
+        if(isDestroyed()||isFinishing())return;
+        try{
+            configureExtensions();initScriptBridge();
+            devSuite=new DevSuiteFeature(this,runtime,()->tabs.isEmpty()||current().home?null:current().session,this::openLocalTool);
+            devSuite.start();restoreTabs();
+            if(startup!=null){
+                startup.stage(3,"Интерфейс готов");
+                chromeHandler.postDelayed(()->{
+                    if(startup!=null&&!isDestroyed()){shell.removeView(startup);startup=null;}
+                },Math.max(0,3000-(SystemClock.uptimeMillis()-startupStart)));
+            }
+        }catch(RuntimeException e){startupError(e);}
+    }
+    private void startupError(RuntimeException e){
+        if(startup!=null)startup.stage(0,"Не удалось запустить браузер");
+        new AlertDialog.Builder(this).setTitle("Ошибка запуска").setMessage(String.valueOf(e.getMessage())).setPositiveButton("Закрыть",(d,w)->finish()).setOnCancelListener(d->finish()).show();
     }
     private int dp(float x){return Math.round(x*getResources().getDisplayMetrics().density);}
     private GradientDrawable shape(int color,int radius,int stroke){GradientDrawable d=new GradientDrawable();d.setColor(color);d.setCornerRadius(dp(radius));if(stroke!=0)d.setStroke(dp(1),stroke);return d;}
@@ -155,7 +193,7 @@ public class MainActivity extends Activity {
     private void updateProgress(Tab t){if(!tabs.isEmpty()&&t==current()){if(progress.getProgress()!=t.progress)progress.setProgress(t.progress);int visibility=fullscreenUi?View.GONE:!t.home&&t.progress>0&&t.progress<100?View.VISIBLE:View.INVISIBLE;if(progress.getVisibility()!=visibility)progress.setVisibility(visibility);}}
     private View home(){
         ScrollView sc=new ScrollView(this);sc.setFillViewport(true);sc.setBackground(appearance.equals("Космос")?new SpaceArt():shape(themeBg(),0,0));LinearLayout box=column();box.setGravity(Gravity.CENTER_HORIZONTAL|Gravity.CENTER_VERTICAL);box.setPadding(dp(18),dp(26),dp(18),dp(30));sc.addView(box,new ScrollView.LayoutParams(-1,-2));
-        ImageView icon=new ImageView(this);icon.setImageResource(R.drawable.bolt);add(box,icon,88,88);
+        ImageView icon=new ImageView(this);icon.setImageResource(R.drawable.aether_icon);add(box,icon,88,88);
         TextView brand=label("AetherBolt Browser",30,TEXT);brand.setGravity(Gravity.CENTER);brand.setTypeface(Typeface.DEFAULT,Typeface.BOLD_ITALIC);android.text.SpannableString sp=new android.text.SpannableString("AetherBolt Browser");sp.setSpan(new android.text.style.ForegroundColorSpan(PURPLE),11,18,0);brand.setText(sp);add(box,brand,-1,-2);
         TextView slogan=label("Beyond the Limits.",15,MUTED);slogan.setTypeface(Typeface.DEFAULT,Typeface.ITALIC);slogan.setGravity(Gravity.CENTER);add(box,slogan,-1,-2);
         TextView search=button("⌕     Поиск в интернете", "Поиск",()->{address.requestFocus();((InputMethodManager)getSystemService(INPUT_METHOD_SERVICE)).showSoftInput(address,InputMethodManager.SHOW_IMPLICIT);});search.setBackground(ripple(0xd0202547,25,PURPLE));LinearLayout.LayoutParams searchP=new LinearLayout.LayoutParams(-1,dp(53));searchP.setMargins(0,dp(22),0,dp(5));box.addView(search,searchP);
@@ -163,7 +201,7 @@ public class MainActivity extends Activity {
         String[] names={"Google","DuckDuckGo","Bing","Brave Search","Qwant","Яндекс","Ahmia","Добавить"};String[] icons={"G","D","b","B","Q","Я","◎","+"};int[] colors={0xff79aaff,0xffff9c50,CYAN,0xffff855d,PURPLE,0xffff7d8a,0xffc69cff,TEXT};Runnable[] actions=new Runnable[8];for(int i=0;i<6;i++){final int n=i;actions[i]=()->setEngine(Router.ENGINES[n][0],Router.ENGINES[n][1]);}actions[6]=()->setEngine(Router.ENGINES[10][0],Router.ENGINES[10][1]);actions[7]=()->customEngine();
         int cols=getResources().getConfiguration().screenWidthDp>=720?8:4;grid(box,names,icons,colors,actions,cols);
         grid(box,new String[]{"Дополнения","Загрузки","Закладки","История","Настройки","Вкладки"},new String[]{"✧","↓","☆","◷","⚙","▣"},new int[]{PURPLE,CYAN},new Runnable[]{()->quickAddons(),()->downloadPanel(),()->listDialog("Закладки",bookmarks,"bookmarks"),()->listDialog("История",history,"history"),()->settings(),()->tabDialog()},getResources().getConfiguration().screenWidthDp>=650?6:3);
-        TextView note=label("GECKO ALPHA 0.7.9   •   Tor пока недоступен",11,MUTED);note.setGravity(Gravity.CENTER);add(box,note,-1,28);return sc;
+        TextView note=label("GECKO ALPHA 0.8.0   •   Tor пока недоступен",11,MUTED);note.setGravity(Gravity.CENTER);add(box,note,-1,28);return sc;
     }
 
     private android.graphics.drawable.Drawable ripple(int color,int radius,int stroke){return new android.graphics.drawable.RippleDrawable(android.content.res.ColorStateList.valueOf(0x337f8cff),shape(color,radius,stroke),null);}
@@ -499,7 +537,7 @@ public class MainActivity extends Activity {
 
     private boolean isAdHost(String h){if(h==null)return false;h=h.toLowerCase(Locale.ROOT);for(String domain:new String[]{"doubleclick.net","googlesyndication.com","googleadservices.com","adnxs.com","adsrvr.org"})if(h.equals(domain)||h.endsWith("."+domain))return true;return false;}
     private void navigate(String raw){Router.Target target=Router.resolve(raw,SearchLanguage.template(engineTemplate,prefs.getString("searchLanguage","all")));if(target.kind==Router.Kind.ONION){notice("Сеть Tor","Распознан .onion-адрес. Tor пока не реализован, поэтому адрес не загружен.");return;}if(target.kind==Router.Kind.INVALID){toast("Введите корректный HTTP(S)-адрес или запрос");return;}((InputMethodManager)getSystemService(INPUT_METHOD_SERVICE)).hideSoftInputFromWindow(address.getWindowToken(),0);Tab t=current();t.home=false;t.pendingUrl="";t.url=target.url;showTab();t.session.load(new GeckoSession.Loader().uri(target.url));}
-    private void back(){if(fullscreenUi){leaveFullscreen();return;}if(overlay!=null){panelBack();return;}Tab t=current();if(!t.home&&t.session!=null&&t.canBack){t.session.goBack();return;}if(t.opener!=null&&tabs.contains(t.opener)){Tab parent=t.opener;closeTab(active);active=tabs.indexOf(parent);showTab();return;}if(!t.home){toast("Нет предыдущей страницы");return;}super.onBackPressed();}
+    private void back(){if(startup!=null||tabs.isEmpty()){finish();return;}if(fullscreenUi){leaveFullscreen();return;}if(overlay!=null){panelBack();return;}Tab t=current();if(!t.home&&t.session!=null&&t.canBack){t.session.goBack();return;}if(t.opener!=null&&tabs.contains(t.opener)){Tab parent=t.opener;closeTab(active);active=tabs.indexOf(parent);showTab();return;}if(!t.home){toast("Нет предыдущей страницы");return;}super.onBackPressed();}
     @Override public void onBackPressed(){back();}
     private void toast(String s){Toast.makeText(this,s,Toast.LENGTH_SHORT).show();}
     private void setEngine(String name,String template){engineName=name;engineTemplate=template;prefs.edit().putString("engineName",name).putString("engineTemplate",template).apply();if(current().home)showTab();toast("Поисковик: "+name);}
@@ -551,7 +589,7 @@ public class MainActivity extends Activity {
     }
     @Override protected void onPause(){if(!tabs.isEmpty())saveTabs();super.onPause();}
     private void menu(){
-        LinearLayout c=panel("AetherBolt","0.7.9 DevSuite • Быстрый доступ",true);
+        LinearLayout c=panel("AetherBolt","0.8.0 DevSuite • Быстрый доступ",true);
         grid(c,new String[]{"Новая вкладка","Вкладки","Вперёд","Закладка","История","Загрузки","Расширения","DevSuite","VPN","Защита","Настройки","Закладки"},new String[]{"+","▣","›","☆","◷","↓","✧",">_","◈","◈","⚙","☆"},new int[]{CYAN,PURPLE},new Runnable[]{()->addTab(),()->tabDialog(),()->{dismissPanel();if(!current().home&&current().session!=null&&current().canForward)current().session.goForward();},()->saveBookmark(),()->listDialog("История",history,"history"),()->downloadPanel(),()->quickAddons(),()->devSuitePanel(),()->vpnPanel(),()->privacy(),()->settings(),()->listDialog("Закладки",bookmarks,"bookmarks")},3);
     }
 
@@ -568,7 +606,7 @@ public class MainActivity extends Activity {
     private void startVpn(){vpn.change(true,this::vpnDone);}
     private void vpnDone(String err){runOnUiThread(()->{if(isFinishing()||isDestroyed())return;if(err!=null)notice("VPN",err);else vpnPanel();});}
 
-    private void settings(){LinearLayout c=panel("Настройки","Управление AetherBolt Browser",false);section(c,"ПЕРСОНАЛИЗАЦИЯ");item(c,"⌕","Поисковая система",engineName,"›",()->engineDialog());item(c,"◎","Язык результатов",searchLanguageName()+" • "+SearchLanguage.support(engineTemplate),"›",()->searchLanguages());item(c,"✧","Внешний вид",appearance,"›",()->themes());item(c,"▣","Настройки сайтов","JavaScript, изображения, ПК, масштаб, медиа","›",()->webOptions());section(c,"БЕЗОПАСНОСТЬ И МОДУЛИ");item(c,">_","DevSuite","Eruda • xterm • CyberChef • Linux • прокси","›",()->devSuitePanel());item(c,"◈","VPN • WireGuard",vpn.active()?"Туннель включён":"Отключён","›",()->vpnPanel());item(c,"◈","Конфиденциальность","Cookies, история, реклама и трекеры","›",()->privacy());item(c,"✧","Расширения и скрипты","GeckoView • XPI / JS","›",()->addonManage());item(c,"◎","Сеть Tor","Не реализована","›",()->notice("Tor","Поддержка .onion пока не реализована."));section(c,"ФАЙЛЫ И ДАННЫЕ");item(c,"↓","Загрузки","Менеджер файлов","›",()->downloadPanel());item(c,"×","Очистить данные","История и данные сайтов","›",()->clearData());section(c,"О ПРИЛОЖЕНИИ");item(c,"↻","Обновление браузера","Локальный дельта-патч .aeb","›",()->updatePanel());item(c,"⚡","AetherBolt Browser","0.7.9 Alpha • GeckoView 161","›",()->notice("AetherBolt","Beyond the Limits. GeckoView • XPI. Tor и перенос пользовательских скриптов ещё не завершены."));}
+    private void settings(){LinearLayout c=panel("Настройки","Управление AetherBolt Browser",false);section(c,"ПЕРСОНАЛИЗАЦИЯ");item(c,"⌕","Поисковая система",engineName,"›",()->engineDialog());item(c,"◎","Язык результатов",searchLanguageName()+" • "+SearchLanguage.support(engineTemplate),"›",()->searchLanguages());item(c,"✧","Внешний вид",appearance,"›",()->themes());item(c,"▣","Настройки сайтов","JavaScript, изображения, ПК, масштаб, медиа","›",()->webOptions());section(c,"БЕЗОПАСНОСТЬ И МОДУЛИ");item(c,">_","DevSuite","Eruda • xterm • CyberChef • Linux • прокси","›",()->devSuitePanel());item(c,"◈","VPN • WireGuard",vpn.active()?"Туннель включён":"Отключён","›",()->vpnPanel());item(c,"◈","Конфиденциальность","Cookies, история, реклама и трекеры","›",()->privacy());item(c,"✧","Расширения и скрипты","GeckoView • XPI / JS","›",()->addonManage());item(c,"◎","Сеть Tor","Не реализована","›",()->notice("Tor","Поддержка .onion пока не реализована."));section(c,"ФАЙЛЫ И ДАННЫЕ");item(c,"↓","Загрузки","Менеджер файлов","›",()->downloadPanel());item(c,"×","Очистить данные","История и данные сайтов","›",()->clearData());section(c,"О ПРИЛОЖЕНИИ");item(c,"↻","Обновление браузера","Локальный дельта-патч .aeb","›",()->updatePanel());item(c,"⚡","AetherBolt Browser","0.8.0 Alpha • GeckoView 161","›",()->notice("AetherBolt","Beyond the Limits. GeckoView • XPI. Tor и перенос пользовательских скриптов ещё не завершены."));}
     private void clearData(){history.clear();closedPages.clear();for(Tab t:tabs)t.preview=null;prefs.edit().remove("workspaceTabs").remove("workspaceActive").apply();writeList("history",history);notice("История очищена","Данные сайтов Gecko не удалены; отдельный механизм ещё не перенесён.");}
 
     private void readList(String key,ArrayList<String> out){try{JSONArray a=new JSONArray(prefs.getString(key,"[]"));for(int i=0;i<a.length();i++)out.add(a.getString(i));}catch(JSONException ignored){}}
@@ -576,6 +614,6 @@ public class MainActivity extends Activity {
     private void remember(ArrayList<String> data,String key,String url,int cap){data.remove(url);data.add(0,url);while(data.size()>cap)data.remove(data.size()-1);writeList(key,data);}
     private void saveBookmark(){Tab t=current();String u=t.url;if(t.home||u==null||Router.parse(u).kind!=Router.Kind.WEB){toast("Сначала откройте сайт");return;}remember(bookmarks,"bookmarks",u,200);toast("Закладка сохранена");}
     private void listDialog(String title,ArrayList<String> data,String key){LinearLayout c=panel(title,data.size()+" записей",false);if(data.isEmpty()){item(c,"☆","Пока пусто","Здесь появятся сохранённые страницы","",()->{});return;}for(String u:new ArrayList<>(data)){String host=Uri.parse(u).getHost();item(c,key.equals("history")?"◷":"☆",host==null?u:host,u,"›",()->{dismissPanel();navigate(u);});}item(c,"×","Очистить список","","›",()->{LinearLayout confirm=panel("Очистить список?","Действие нельзя отменить",true);item(confirm,"×","Удалить все записи","","",()->{data.clear();writeList(key,data);listDialog(title,data,key);});item(confirm,"‹","Отмена","","",()->listDialog(title,data,key));});}
-    @Override public void onConfigurationChanged(android.content.res.Configuration c){super.onConfigurationChanged(c);tabStrip.setVisibility(!fullscreenUi&&c.screenWidthDp>=600?View.VISIBLE:View.GONE);if(!fullscreenUi)showTab();else shell.requestApplyInsets();}
+    @Override public void onConfigurationChanged(android.content.res.Configuration c){super.onConfigurationChanged(c);tabStrip.setVisibility(!fullscreenUi&&c.screenWidthDp>=600?View.VISIBLE:View.GONE);if(!fullscreenUi&&!tabs.isEmpty())showTab();else shell.requestApplyInsets();}
     @Override protected void onDestroy(){if(fullscreenUi)leaveFullscreen();chromeHandler.removeCallbacksAndMessages(null);if(transfers!=null)transfers.destroy();if(devSuite!=null)devSuite.stop();if(addonPopup!=null)addonPopup.dismiss();for(WebExtension e:registeredAddons.values()){e.setActionDelegate(null);e.setTabDelegate(null);}if(body!=null)body.removeAllViews();for(Tab t:tabs){if(t.session!=null){t.web.releaseSession();t.session.close();}}super.onDestroy();}
 }

@@ -1,0 +1,4 @@
+# AetherBolt 0.8.0 — animated cold start
+Place the owner-supplied `aetherbolt-branding.zip` in the repository root. It contains three approved artwork crops, not executable code. The Gradle task extracts only allowlisted resource paths. The new launcher label is AetherBolt and the package ID/signing configuration are unchanged.
+
+The startup overlay runs on cold process start only, animating three comets with an elapsed-time orbit period of 3000 ms. The overlay is removed after both 3 seconds and actual native UI/tab initialization. Its bar uses three real initialization milestones, not a fake timer; it does not claim that a website or every asynchronous extension has loaded. Gecko startup executes on its required UI thread, so heavy initialization may temporarily interrupt frames. Device testing is required. Warm resumes do not show the overlay.

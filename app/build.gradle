@@ -15,8 +15,8 @@ android {
             }
         }
         targetSdk 35
-        versionCode 27
-        versionName '0.7.9-devsuite-alpha'
+        versionCode 28
+        versionName '0.8.0-devsuite-alpha'
     }
     compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
 }
@@ -34,3 +34,18 @@ tasks.register('prepareDevSuite', Exec) {
     commandLine 'python3', 'tools/prepare_devsuite.py'
 }
 tasks.named('preBuild').configure { dependsOn tasks.named('prepareDevSuite') }
+
+// The approved art pack contains only Android drawable resources.
+def brandingArchive = rootProject.file('aetherbolt-branding.zip')
+def brandingRes = layout.buildDirectory.dir('generated/aetherBranding/res')
+android.sourceSets.main.res.srcDir(brandingRes)
+tasks.register('prepareAetherBranding', Sync) {
+    from({ zipTree(brandingArchive) }) {
+        include 'drawable-nodpi/aether_icon.png', 'drawable-nodpi/aether_adaptive_fg.png', 'drawable-nodpi/aether_monster.jpg'
+    }
+    into brandingRes
+    doFirst {
+        if (!brandingArchive.isFile()) throw new GradleException('Upload aetherbolt-branding.zip to the repository root before building.')
+    }
+}
+tasks.named('preBuild').configure { dependsOn tasks.named('prepareAetherBranding') }
