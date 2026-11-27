@@ -24,6 +24,11 @@ public class ScriptRulesTest{
  t(!ScriptRules.permits("// @match https://example.org/*\n// @exclude https://example.org/private*","https://example.org/private/a"));
  t(ScriptRules.permits("// @match *://*.example.org/*","https://a.example.org/x"));
  t(!ScriptRules.permits("// @match *://*.example.org/*","https://badexample.org/x"));
+ t(ScriptRules.permitsAt("https://example.org","// @match https://example.org/models/*","https://example.org/models/a"));
+ t(!ScriptRules.permitsAt("https://example.org","// @match https://example.org/models/*","https://example.org/settings"));
+ t(!ScriptRules.permitsAt("https://example.org","// @match <all_urls>","https://sub.example.org/models/a"));
+ t(!ScriptRules.permitsAt("https://example.org","// @match <all_urls>","https://example.org:8443/models/a"));
+ t(!ScriptRules.permitsAt("https://example.org","// @exclude https://example.org/private/*","https://example.org/private/a"));
  t(ScriptRules.metadata("// @name Demo\n","name").equals("Demo"));
  System.out.println("PASS: "+n+" script rules checks");
  }

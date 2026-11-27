@@ -1,26 +1,91 @@
-// Passive, bounded retry of the existing native port. No automatic script execution.
 (() => {
   if (window !== window.top || !/^https?:$/.test(location.protocol)) return;
-  let port=null, timer=null, closed=false, running=false;
-  function retry(){if(!closed&&!timer)timer=setTimeout(()=>{timer=null;connect();},3000);}
-  function connect(){
-    if(closed||port)return;
-    let p;
-    try{p=browser.runtime.connectNative("aetherScripts");port=p;}catch(_){retry();return;}
-    p.onDisconnect.addListener(()=>{if(port===p){port=null;retry();}});
-    p.onMessage.addListener(async request=>{
-      if(port!==p||closed||!request||request.type!=="run"||running||typeof request.token!=="string")return;
-      const token=request.token;running=true;
-      try{
-        if(request.origin!==location.origin||request.url!==location.href||typeof request.code!=="string"||request.code.length>262144)throw Error("Страница изменилась");
-        const result=await browser.runtime.sendMessage({kind:"run-local",code:request.code,origin:request.origin,url:request.url});
-        if(!result||result.ok!==true)throw Error(result&&result.message||"Нет подтверждения выполнения");
-        if(port===p&&!closed)p.postMessage({type:"result",token,ok:true});
-      }catch(err){try{if(port===p&&!closed)p.postMessage({type:"result",token,ok:false,message:String(err).slice(0,180)});}catch(_){}}
-      finally{running=false;}
-    });
+
+  const documentId = Array.from(crypto.getRandomValues(new Uint8Array(16)),
+    byte => byte.toString(16).padStart(2, "0")).join("");
+  // This state lives in the extension's isolated world for this frame.
+  globalThis.__aetherboltScriptContext = {documentId, automated: new Set()};
+  let port = null;
+  let timer = null;
+  let closed = false;
+  let running = false;
+
+  function retry() {
+    if (!closed && timer === null) {
+      timer = setTimeout(() => {
+        timer = null;
+        connect();
+      }, 3000);
+    }
   }
-  window.addEventListener("pagehide",()=>{closed=true;clearTimeout(timer);timer=null;const p=port;port=null;try{p?.disconnect();}catch(_){}});
-  window.addEventListener("pageshow",e=>{if(e.persisted){closed=false;connect();}});
+
+  function connect() {
+    if (closed || port) return;
+    let connection;
+    try {
+      connection = browser.runtime.connectNative("aetherScripts");
+      port = connection;
+      connection.onDisconnect.addListener(() => {
+        if (port === connection) {
+          port = null;
+          retry();
+        }
+      });
+      connection.onMessage.addListener(async request => {
+        if (port !== connection || closed) return;
+        if (request?.type === "hello") {
+          try { connection.postMessage({type: "ready", documentId}); } catch (_) {}
+          return;
+        }
+        if (request?.type !== "run" || typeof request.token !== "string") return;
+        const result = {type: "result", token: request.token, documentId,
+          automaticId: request.automaticId, url: request.url, ok: false};
+        if (running) {
+          try { connection.postMessage({...result, message: "Страница уже выполняет скрипт"}); } catch (_) {}
+          return;
+        }
+        running = true;
+        try {
+          if (request.documentId !== documentId || request.origin !== location.origin ||
+              request.url !== location.href) {
+            result.changed = true;
+            result.message = "Страница изменилась";
+          } else {
+            Object.assign(result, await browser.runtime.sendMessage({
+              kind: "run-local", code: request.code, origin: request.origin, url: request.url,
+              documentId, automaticId: request.automaticId,
+            }));
+          }
+        } catch (error) {
+          result.message = String(error).slice(0, 180);
+        } finally {
+          running = false;
+        }
+        if (port === connection && !closed) {
+          try { connection.postMessage(result); } catch (_) {}
+        }
+      });
+      connection.postMessage({type: "ready", documentId});
+    } catch (_) {
+      port = null;
+      try { connection?.disconnect(); } catch (_) {}
+      retry();
+    }
+  }
+
+  window.addEventListener("pagehide", () => {
+    closed = true;
+    clearTimeout(timer);
+    timer = null;
+    const connection = port;
+    port = null;
+    try { connection?.disconnect(); } catch (_) {}
+  });
+  window.addEventListener("pageshow", event => {
+    if (event.persisted) {
+      closed = false;
+      connect();
+    }
+  });
   connect();
 })();

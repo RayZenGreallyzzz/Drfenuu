@@ -127,9 +127,17 @@ public class MainActivity extends Activity {
     private void scheduleTitleUpdate(){if(fullscreenUi)return;chromeHandler.removeCallbacks(titleUpdate);chromeHandler.postDelayed(titleUpdate,Math.max(100,quietAfter-SystemClock.uptimeMillis()));}
     private FrameLayout shell,overlay; private String panelTitle="";
     private static final class PanelState {final String title;final FrameLayout view;PanelState(String t,FrameLayout v){title=t;view=v;}}
-    private final ArrayDeque<PanelState> panelHistory=new ArrayDeque<>(); private Tab shownTab; private static final int SCRIPT_PICK=702; private final ArrayList<UserScript> scripts=new ArrayList<>(); private static class UserScript {String id,name,site,code;boolean enabled; UserScript(String i,String n,String o,String c,boolean e){id=i;name=n;site=o;code=c;enabled=e;}} private TextView tabCount; private TextView downloadButton; private ProgressBar progress; private android.content.SharedPreferences prefs;
+    private final ArrayDeque<PanelState> panelHistory=new ArrayDeque<>(); private Tab shownTab; private static final int SCRIPT_PICK=702; private final ArrayList<UserScript> scripts=new ArrayList<>(); private TextView tabCount; private TextView downloadButton; private ProgressBar progress; private android.content.SharedPreferences prefs;
+    private static class UserScript {
+        final String id;
+        String name,site,code;
+        boolean enabled,automatic;
+        UserScript(String id,String name,String site,String code,boolean enabled){
+            this.id=id;this.name=name;this.site=site;this.code=code;this.enabled=enabled;
+        }
+    }
     private BoltVpn vpn; private static GeckoRuntime runtime; private WebExtensionController extensions; private WebExtension scriptBridge; private final ArrayList<Tab> tabs=new ArrayList<>(); private int active=0;
-    private static class Tab { WebExtension extensionOwner,authOwner; WebExtension.Port scriptPort; String scriptToken,scriptStatus=""; Tab opener; GeckoView web; GeckoSession session; String url="", pendingUrl=""; boolean canBack,canForward,webActive=false,logicalActive=false,awaitingOpen,addonPopupTab,crashed; boolean home=true; String title="Новая вкладка"; int progress=0; final HashSet<String> executed=new HashSet<>(); android.graphics.Bitmap preview, favicon; }
+    private static class Tab { WebExtension extensionOwner,authOwner; WebExtension.Port scriptPort; String scriptToken,scriptDocument,scriptStatus=""; boolean scriptReady,scriptAutomatic; Tab opener; GeckoView web; GeckoSession session; String url="", pendingUrl=""; boolean canBack,canForward,webActive=false,logicalActive=false,awaitingOpen,addonPopupTab,crashed; boolean home=true; String title="Новая вкладка"; int progress=0; final HashSet<String> executed=new HashSet<>(); android.graphics.Bitmap preview, favicon; }
     private final ArrayList<String> bookmarks=new ArrayList<>(), history=new ArrayList<>();
     private JSONObject historyInfo=new JSONObject();
     private String engineName="Google", engineTemplate=Router.ENGINES[0][1];
@@ -752,14 +760,72 @@ public class MainActivity extends Activity {
     private View previewFor(Tab t){FrameLayout frame=new FrameLayout(this);frame.setBackground(glass(13,0xff3d4772));frame.setClipToOutline(true);if(!t.home&&t.preview!=null){ImageView image=new ImageView(this);image.setImageBitmap(t.preview);image.setScaleType(ImageView.ScaleType.CENTER_CROP);frame.addView(image,new FrameLayout.LayoutParams(-1,-1));}else{if(t.home)frame.setBackground(new SpaceArt());LinearLayout center=column();center.setGravity(Gravity.CENTER);ImageView img=new ImageView(this);if(t.home)img.setImageResource(R.drawable.bolt);else if(t.favicon!=null)img.setImageBitmap(t.favicon);else img.setImageDrawable(icon("◎",CYAN,38));add(center,img,46,46);TextView name=label(t.home?"AetherBolt":t.title,12,TEXT);name.setGravity(Gravity.CENTER);name.setMaxLines(2);center.addView(name);frame.addView(center,new FrameLayout.LayoutParams(-1,-1));}return frame;}
 
 
-    private void loadScripts(){try{JSONArray a=new JSONArray(prefs.getString("userScripts","[]"));for(int i=0;i<Math.min(a.length(),40);i++){JSONObject j=a.getJSONObject(i);String site=ScriptRules.scope(j.getString("site")),code=j.getString("code");if(!site.isEmpty()&&ScriptRules.validate(code).isEmpty())scripts.add(new UserScript(j.getString("id"),j.getString("name"),site,code,j.optBoolean("enabled",false)));}}catch(Exception ignored){}}
-    private void saveScripts(){JSONArray a=new JSONArray();try{for(UserScript u:scripts){JSONObject j=new JSONObject();j.put("id",u.id);j.put("name",u.name);j.put("site",u.site);j.put("code",u.code);j.put("enabled",u.enabled);a.put(j);}}catch(JSONException ignored){}prefs.edit().putString("userScripts",a.toString()).apply();}
+    private void loadScripts(){
+        try{
+            JSONArray saved=new JSONArray(prefs.getString("userScripts","[]"));
+            for(int i=0;i<Math.min(saved.length(),40);i++){
+                JSONObject row=saved.optJSONObject(i);
+                if(row==null)continue;
+                String id=row.optString("id"),name=row.optString("name");
+                String site=ScriptRules.scope(row.optString("site")),code=row.optString("code");
+                if(id.isEmpty()||name.isEmpty()||site.isEmpty()||!ScriptRules.validate(code).isEmpty())continue;
+                UserScript script=new UserScript(id,name,site,code,row.optBoolean("enabled",false));
+                script.automatic=row.optBoolean("automatic",false);
+                scripts.add(script);
+            }
+        }catch(JSONException ignored){}
+    }
+    private void saveScripts(){
+        JSONArray saved=new JSONArray();
+        try{
+            for(UserScript script:scripts){
+                saved.put(new JSONObject().put("id",script.id).put("name",script.name).put("site",script.site)
+                    .put("code",script.code).put("enabled",script.enabled).put("automatic",script.automatic));
+            }
+        }catch(JSONException ignored){}
+        prefs.edit().putString("userScripts",saved.toString()).apply();
+    }
     private void clearScriptPort(Tab t){
-        WebExtension.Port p=t.scriptPort;t.scriptPort=null;t.scriptToken=null;t.scriptStatus="";
+        WebExtension.Port p=t.scriptPort;t.scriptPort=null;t.scriptToken=null;t.scriptReady=false;t.scriptStatus="";
         if(p!=null)try{p.disconnect();}catch(RuntimeException ignored){}
     }
+    private boolean scriptDocumentReady(Tab t){
+        return t!=null&&!t.home&&!t.crashed&&!clearingData&&t.extensionOwner==null
+            &&t.session!=null&&t.scriptPort!=null&&t.scriptReady
+            &&!ScriptRules.origin(t.url).isEmpty()
+            &&ScriptRules.origin(t.url).equals(ScriptRules.origin(t.scriptPort.sender.url));
+    }
     private boolean scriptReady(Tab t,UserScript u){
-        return t!=null&&!t.home&&!t.crashed&&t.extensionOwner==null&&t.session!=null&&t.scriptPort!=null&&u.enabled&&scripts.contains(u)&&u.site.equals(ScriptRules.origin(t.url))&&ScriptRules.permits(u.code,t.url)&&u.site.equals(ScriptRules.origin(t.scriptPort.sender.url));
+        return scriptDocumentReady(t)&&u.enabled&&scripts.contains(u)
+            &&ScriptRules.permitsAt(u.site,u.code,t.url);
+    }
+    private void runAutomaticScripts(Tab t){
+        if(isDestroyed()||isFinishing()||!scriptDocumentReady(t)||t.scriptToken!=null)return;
+        for(UserScript script:scripts){
+            if(!script.automatic||!scriptReady(t,script)||!t.executed.add(script.id))continue;
+            postScript(t,script.code,script.id);
+            return;
+        }
+    }
+    private void postScript(Tab t,String code,String automaticId){
+        String token=UUID.randomUUID().toString();
+        boolean automatic=automaticId!=null;
+        t.scriptToken=token;t.scriptAutomatic=automatic;
+        t.scriptStatus=automatic?"Автозапуск…":"Ожидается запуск";
+        try{
+            t.scriptPort.postMessage(new JSONObject().put("type","run").put("token",token)
+                .put("code",code).put("origin",ScriptRules.origin(t.url)).put("url",t.url)
+                .put("documentId",t.scriptDocument).put("automaticId",automaticId));
+        }catch(JSONException|RuntimeException err){
+            t.scriptToken=null;t.scriptStatus="Ошибка передачи";
+            if(!automatic)toast(t.scriptStatus);
+            return;
+        }
+        chromeHandler.postDelayed(()->{
+            if(!token.equals(t.scriptToken))return;
+            t.scriptToken=null;t.scriptStatus="Нет подтверждения запуска";
+            if(!automatic&&!tabs.isEmpty()&&current()==t)toast(t.scriptStatus);
+        },12000);
     }
     private void runLocalScript(UserScript u){
         if(tabs.isEmpty()){toast("Откройте сайт");return;}
@@ -770,10 +836,8 @@ public class MainActivity extends Activity {
         final String url=t.url;final WebExtension.Port port=t.scriptPort;
         new AlertDialog.Builder(this).setTitle("Запустить "+u.name+"?").setMessage(u.site+"\nСкрипт может читать и изменять данные открытой страницы. Используйте только доверенный код и разрешённые операции.").setNegativeButton("Отмена",null).setPositiveButton("Запустить",(d,w)->{
             if(tabs.isEmpty()||current()!=t||!url.equals(t.url)||port!=t.scriptPort||!scriptReady(t,u)||t.scriptToken!=null){toast("Страница или настройки изменились");return;}
-            String token=UUID.randomUUID().toString();t.scriptToken=token;t.scriptStatus="Ожидается запуск";dismissPanel();
-            try{port.postMessage(new JSONObject().put("type","run").put("token",token).put("code",u.code).put("origin",u.site).put("url",url));}
-            catch(Exception ex){t.scriptToken=null;t.scriptStatus="Ошибка передачи";toast(t.scriptStatus);return;}
-            chromeHandler.postDelayed(()->{if(token.equals(t.scriptToken)){t.scriptToken=null;t.scriptStatus="Нет подтверждения запуска";if(tabs.contains(t)&&current()==t)toast(t.scriptStatus);}},12000);
+            dismissPanel();
+            postScript(t,u.code,null);
         }).show();
     }
     private String selectedFileName(Uri uri){
@@ -789,7 +853,7 @@ public class MainActivity extends Activity {
         LinearLayout c=panel("Диагностика расширений","GeckoView",false);
         item(c,"◎","Проверить CRX / ZIP / XPI / JS","Манифест, разрешения и подготовка исходников для Gecko","›",()->{try{pickLocal(984);}catch(Exception e){toast("Не удалось открыть файл");}});
         item(c,"✓","Самопроверка MV3","Локальное тестовое расширение • Worker, WASM, Blob, storage, runtime","›",this::openCompatibilityLab);
-        item(c,"JS","Script Manager","Статус подключения и ручной запуск","›",this::scriptPanel);
+        item(c,"▶","Тест запуска JavaScript","Проверка на открытой странице","›",this::scriptSelfTest);
     }
     private void openCompatibilityLab(){
         if(compatLoading){toast("Тестовый модуль уже загружается");return;}
@@ -1092,20 +1156,99 @@ public class MainActivity extends Activity {
         });return null;},err->{runOnUiThread(()->{if(!isDestroyed())state.setText("Не удалось прочитать список расширений");});return null;});
     }
     private void scriptSelfTest(){
-        if(tabs.isEmpty()||current().home||current().session==null||current().scriptPort==null||ScriptRules.origin(current().url).isEmpty()){toast("Откройте HTTP(S)-страницу и перезагрузите её");return;}
+        if(tabs.isEmpty()||!scriptDocumentReady(current())){toast("Откройте HTTP(S)-страницу и перезагрузите её");return;}
         Tab t=current();if(t.scriptToken!=null){toast("Тест или запуск уже выполняется");return;}
         final WebExtension.Port port=t.scriptPort;final String url=t.url;final String site=ScriptRules.origin(url);
         new AlertDialog.Builder(this).setTitle("Проверить запуск JavaScript?").setMessage("Выполнить безопасный тест изменения DOM на "+site+"? Тест не читает учётные данные и не отправляет данные.").setNegativeButton("Отмена",null).setPositiveButton("Тестировать",(dialog,w)->{
-            if(tabs.isEmpty()||current()!=t||!url.equals(t.url)||t.scriptPort!=port){toast("Страница изменилась");return;}
-            String token=UUID.randomUUID().toString();t.scriptToken=token;t.scriptStatus="Тест выполняется";dismissPanel();
-            try{port.postMessage(new JSONObject().put("type","run").put("token",token).put("origin",site).put("url",url).put("code","document.documentElement.dataset.aetherboltProbe='ok';"));}
-            catch(Exception e){t.scriptToken=null;toast("Не удалось отправить тест");}
-            chromeHandler.postDelayed(()->{if(token.equals(t.scriptToken)){t.scriptToken=null;t.scriptStatus="Тест не получил ответа";if(tabs.contains(t)&&current()==t)toast(t.scriptStatus);}},10000);
+            if(tabs.isEmpty()||current()!=t||!url.equals(t.url)||t.scriptPort!=port||!scriptDocumentReady(t)||t.scriptToken!=null){toast("Страница изменилась или уже выполняется скрипт");return;}
+            dismissPanel();
+            postScript(t,"document.documentElement.dataset.aetherboltProbe='ok';",null);
         }).show();
     }
-    private void scriptPanel(){LinearLayout c=panel("Пользовательские скрипты","AetherBolt Script Engine • JavaScript",false);item(c,"◎","Канал текущей вкладки",scriptBridge==null?"Модуль не загружен":tabs.isEmpty()||current().scriptPort==null?"Ожидается подключение веб-страницы":"Подключён","›",this::compatibilityCenter);section(c,"ПРОВЕРКА");item(c,"▶","Тест запуска JavaScript","Минимальное изменение DOM • явное подтверждение","›",this::scriptSelfTest);item(c,"✧","Violentmonkey Pro","Подписанный менеджер Firefox • GM API","›",this::violentmonkeyPanel);section(c,"ИМПОРТ");item(c,"+","Установить из файла","XPI / ZIP / CRX / USER.JS / JS","›",this::importAddonPicker);item(c,"↗","Загрузить по HTTPS","Без cookies и автоматических обновлений","›",()->scriptUrl());item(c,"JS","Создать / вставить код","Встроенный редактор","›",()->editScript(null,"",""));item(c,"✧","Менеджеры userscript","Tampermonkey / Violentmonkey в Mozilla; совместимость зависит от GeckoView","›",()->{LinearLayout p=panel("Менеджеры userscript","Дополнительные GM API",false);item(p,"✧","Tampermonkey","Поиск в магазине Mozilla","›",()->addonStore("Tampermonkey",1));item(p,"✧","Violentmonkey","Поиск в магазине Mozilla","›",()->addonStore("Violentmonkey",1));});section(c,"УСТАНОВЛЕННЫЕ • "+scripts.size());if(scripts.isEmpty())item(c,"▤","Пока нет скриптов","Импортируй доверенный JavaScript","",()->{});for(UserScript u:new ArrayList<>(scripts))item(c,"JS",u.name,u.site+" • "+(u.enabled?"Включён":"Выключен")+(u.enabled&&!tabs.isEmpty()&&scriptReady(current(),u)?" • готов":""),"›",()->scriptDetails(u));section(c,"БЕЗОПАСНОСТЬ");item(c,"◈","Разрешения","Скрипты имеют доступ к содержимому выбранного сайта","›",()->notice("Важно","Запускай только код из доверенных источников. Скрипт может читать и изменять страницу, включая введённые данные. Нет GM API. Скрипты выключены по умолчанию, ограничены одним точным origin и запускаются вручную. Отключение не останавливает уже запущенный код: перезагрузи страницу."));}
-    private void scriptDetails(UserScript u){LinearLayout c=panel(u.name,u.site,false);if(u.enabled)item(c,"▶","Запустить на текущей странице",!tabs.isEmpty()&&scriptReady(current(),u)?"Мост готов":"Нужен разрешённый сайт и готовый мост","›",()->runLocalScript(u));if(!tabs.isEmpty()&&!current().scriptStatus.isEmpty())item(c,"◎","Последний запуск вкладки",current().scriptStatus,"",()->{});item(c,"✓",u.enabled?"Отключить":"Включить","Включённый скрипт запускается из Script Manager",u.enabled?"●":"○",()->{if(u.enabled){u.enabled=false;saveScripts();scriptDetails(u);}else{LinearLayout a=panel("Разрешить выполнение?",u.site,true);item(a,"◈","Разрешить скрипт","Код сможет читать и менять страницу","›",()->{u.enabled=true;saveScripts();scriptDetails(u);});item(a,"×","Отмена","","",()->scriptDetails(u));}});item(c,"JS","Редактировать код и сайт","","›",()->editScript(u,u.name,u.code));item(c,"×","Удалить скрипт","","›",()->{LinearLayout a=panel("Удалить скрипт?",u.name,true);item(a,"×","Удалить","","",()->{scripts.remove(u);saveScripts();scriptPanel();});item(a,"‹","Отмена","","",()->scriptDetails(u));});}
-    private void editScript(UserScript old,String suggested,String initial){LinearLayout c=panel("Редактор скрипта","Скрипт сохраняется выключенным",false);EditText name=field("Название"),site=field("https://example.com"),code=field("JavaScript");name.setText(suggested);if(old!=null)site.setText(old.site);else if(suggested.toLowerCase(Locale.ROOT).contains("mixamo"))site.setText("https://www.mixamo.com");else if(!ScriptRules.origin(ScriptRules.metadata(initial,"match")).isEmpty())site.setText(ScriptRules.origin(ScriptRules.metadata(initial,"match")));else if(!current().home&&current().url!=null)site.setText(ScriptRules.origin(current().url));code.setSingleLine(false);code.setInputType(android.text.InputType.TYPE_CLASS_TEXT|android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE|android.text.InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);code.setGravity(Gravity.TOP|Gravity.START);code.setTypeface(Typeface.MONOSPACE);code.setTextSize(13);code.setText(initial);add(c,name,-1,54);add(c,site,-1,54);add(c,code,-1,260);TextView info=label("Точный адрес сайта (origin). Включите скрипт и нажмите «Запустить» в Script Manager. Обычные @match/include/exclude, изолированный контекст DOM; без GM API, @require и document-start.",12,MUTED);add(c,info,-1,-2);item(c,"✓","Сохранить выключенным","","›",()->{String n=name.getText().toString().trim(),o=ScriptRules.scope(site.getText().toString()),source=code.getText().toString(),err=ScriptRules.validate(source);if(n.isEmpty()){name.setError("Укажи название");return;}if(o.isEmpty()){site.setError("Нужен точный HTTP(S) origin");return;}if(!err.isEmpty()){code.setError(err);toast(err);return;}if(old==null&&scripts.size()>=40){toast("Максимум 40 скриптов");return;}if(old==null)scripts.add(new UserScript(UUID.randomUUID().toString(),n,o,source,false));else{old.name=n;old.site=o;old.code=source;old.enabled=false;}saveScripts();scriptPanel();});}
+    private void scriptPanel(){
+        LinearLayout c=panel("Пользовательские скрипты","",false);
+        item(c,"+","Импортировать скрипт","USER.JS / JS / ZIP","›",this::importAddonPicker);
+        item(c,"↗","Импорт по HTTPS","","›",this::scriptUrl);
+        item(c,"JS","Создать скрипт","","›",()->editScript(null,"",""));
+        for(UserScript script:scripts){
+            String mode=!script.enabled?"Выключен":script.automatic?"Автозапуск":"Вручную";
+            item(c,"JS",script.name,script.site+" • "+mode,"›",()->scriptDetails(script));
+        }
+        if(scripts.isEmpty())item(c,"▤","Пока нет скриптов","","",()->{});
+        item(c,"✧","Violentmonkey","GM API и запуск в начале загрузки","›",this::violentmonkeyPanel);
+        item(c,"◎","Диагностика","Тест JavaScript и отчёт о файле","›",this::compatibilityCenter);
+    }
+
+    private void chooseScriptMode(UserScript script){
+        new AlertDialog.Builder(this).setTitle("Включить "+script.name+"?")
+            .setMessage("Сайт: "+script.site+". Скрипт получит доступ к содержимому его страниц.")
+            .setNegativeButton("Отмена",null)
+            .setNeutralButton("Вручную",(dialog,which)->enableScript(script,false))
+            .setPositiveButton("Автозапуск",(dialog,which)->enableScript(script,true))
+            .show();
+    }
+
+    private void enableScript(UserScript script,boolean automatic){
+        if(!scripts.contains(script))return;
+        script.enabled=true;script.automatic=automatic;saveScripts();
+        scriptDetails(script);
+        if(automatic&&!tabs.isEmpty())runAutomaticScripts(current());
+    }
+
+    private void scriptDetails(UserScript script){
+        LinearLayout c=panel(script.name,script.site,false);
+        if(script.enabled){
+            item(c,"▶","Запустить на текущей странице",!tabs.isEmpty()&&scriptReady(current(),script)?"Готов":"Откройте разрешённую страницу","›",()->runLocalScript(script));
+            item(c,"↻",script.automatic?"Выключить автозапуск":"Включить автозапуск",
+                script.automatic?"Скрипт останется доступен вручную":"На подходящих страницах",script.automatic?"●":"○",
+                ()->{if(script.automatic)enableScript(script,false);else chooseScriptMode(script);});
+        }
+        item(c,"✓",script.enabled?"Отключить":"Включить","",script.enabled?"●":"○",()->{
+            if(!script.enabled){chooseScriptMode(script);return;}
+            script.enabled=false;script.automatic=false;saveScripts();scriptDetails(script);
+        });
+        item(c,"JS","Редактировать код и сайт","","›",()->editScript(script,script.name,script.code));
+        if(!tabs.isEmpty()&&!current().scriptStatus.isEmpty()){
+            item(c,"◎","Последний запуск вкладки",current().scriptStatus,"",()->{});
+        }
+        item(c,"×","Удалить","","›",()->new AlertDialog.Builder(this).setTitle("Удалить "+script.name+"?")
+            .setNegativeButton("Отмена",null).setPositiveButton("Удалить",(dialog,which)->{
+                scripts.remove(script);saveScripts();scriptPanel();
+            }).show());
+    }
+
+    private void editScript(UserScript old,String suggested,String initial){
+        LinearLayout c=panel("Редактор скрипта","",false);
+        EditText name=field("Название"),site=field("https://example.com"),code=field("JavaScript");
+        name.setText(suggested);
+        String declaredSite=ScriptRules.origin(ScriptRules.metadata(initial,"match"));
+        if(old!=null)site.setText(old.site);
+        else if(!declaredSite.isEmpty())site.setText(declaredSite);
+        else if(suggested.toLowerCase(Locale.ROOT).contains("mixamo"))site.setText("https://www.mixamo.com");
+        else if(!tabs.isEmpty()&&!current().home)site.setText(ScriptRules.origin(current().url));
+        code.setInputType(android.text.InputType.TYPE_CLASS_TEXT|android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE|android.text.InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
+        code.setSingleLine(false);
+        code.setGravity(Gravity.TOP|Gravity.START);code.setTypeface(Typeface.MONOSPACE);code.setTextSize(13);code.setText(initial);
+        add(c,name,-1,54);add(c,site,-1,54);add(c,code,-1,260);
+        item(c,"✓","Сохранить","Сайт и режим запуска можно изменить позже","›",()->{
+            String label=name.getText().toString().trim(),origin=ScriptRules.scope(site.getText().toString());
+            String source=code.getText().toString(),error=ScriptRules.validate(source);
+            if(label.isEmpty()){name.setError("Введите название");return;}
+            if(origin.isEmpty()){site.setError("Нужен точный адрес сайта HTTP(S)");return;}
+            if(!error.isEmpty()){code.setError(error);toast(error);return;}
+            UserScript saved=old;
+            if(saved==null){
+                if(scripts.size()>=40){toast("Максимум 40 скриптов");return;}
+                saved=new UserScript(UUID.randomUUID().toString(),label,origin,source,false);
+                scripts.add(saved);
+            }else{
+                saved.name=label;saved.site=origin;saved.code=source;
+                saved.enabled=false;saved.automatic=false;
+            }
+            saveScripts();scriptDetails(saved);
+        });
+    }
+
     private String readScript(java.io.InputStream in)throws java.io.IOException{try(java.io.InputStream input=in;java.io.ByteArrayOutputStream out=new java.io.ByteArrayOutputStream()){if(input==null)throw new java.io.IOException("Нет данных");byte[] buf=new byte[4096];int n;while((n=input.read(buf))!=-1){if(out.size()+n>ScriptRules.LIMIT)throw new java.io.IOException("Лимит 256 КБ");out.write(buf,0,n);}String result=new String(out.toByteArray(),java.nio.charset.StandardCharsets.UTF_8);return result.startsWith("\ufeff")?result.substring(1):result;}}
     private void reviewScript(String code,String fallback){if(isFinishing()||isDestroyed())return;String name=ScriptRules.metadata(code,"name");editScript(null,name.isEmpty()?fallback:name,code);}
     @Override protected void onActivityResult(int request,int result,Intent data){super.onActivityResult(request,result,data);if(request==ADDON_EXPORT){finishExtensionExport(result,data);return;}if(request==984){if(result==RESULT_OK&&data!=null&&data.getData()!=null){Uri uri=data.getData();new Thread(()->{try{String name=selectedFileName(uri);ScriptImport.Result report=ScriptImport.read(getContentResolver().openInputStream(uri),name);runOnUiThread(()->{if(!isDestroyed())manifestReport(report,name,uri);});}catch(Exception ex){runOnUiThread(()->{if(!isDestroyed())notice("Ошибка диагностики",String.valueOf(ex.getMessage()));});}}).start();}return;}if(passwords!=null&&passwords.onActivityResult(request,result))return;if(request==980){if(result==RESULT_OK){bookmarks.clear();readList("bookmarks",bookmarks);loadOptions();applyProtection();for(Tab t:tabs)applyOptions(t);applyVideoPower();root.setBackgroundColor(themeBg());backupPanel();}return;}if(transfers!=null&&transfers.onActivityResult(request,result,data))return;if(request==706&&result==RESULT_OK){startVpn();return;}if(request==707&&result==RESULT_OK&&data!=null){ArrayList<Uri> uris=new ArrayList<>();if(data.getClipData()!=null){android.content.ClipData clips=data.getClipData();for(int n=0;n<Math.min(clips.getItemCount(),101);n++){Uri u=clips.getItemAt(n).getUri();if(u!=null&&!uris.contains(u))uris.add(u);}}else if(data.getData()!=null)uris.add(data.getData());vpn.importMany(uris,msg->runOnUiThread(()->{if(!isDestroyed()){vpnPanel();toast(msg);}}));return;}if(request==705&&result==RESULT_OK&&data!=null&&data.getData()!=null){applyUpdate(data.getData());return;}if((request==703||request==704)&&result==RESULT_OK&&data!=null&&data.getData()!=null){importLocal(data.getData(),request);return;}if(request==SCRIPT_PICK&&result==RESULT_OK&&data!=null&&data.getData()!=null)openAddonFile(data.getData(),null);}
@@ -1134,7 +1277,7 @@ public class MainActivity extends Activity {
             return GeckoResult.fromValue(next.session);
         }
         @Override public GeckoResult<String> onLoadError(GeckoSession session,String uri,WebRequestError error){if(tabs.contains(t)&&t==current())toast("Не удалось открыть страницу. Проверь сеть и адрес.");return null;}
-        @Override public void onLocationChange(GeckoSession session,String url,List<GeckoSession.PermissionDelegate.ContentPermission> perms,Boolean gesture){if(url==null||!tabs.contains(t)||t.session!=session)return;t.url=url;if(t.extensionOwner!=null&&!t.addonPopupTab&&Router.parse(url).kind==Router.Kind.WEB)t.extensionOwner=null;else if(t.authOwner!=null&&"moz-extension".equals(Uri.parse(url).getScheme())&&addonUrl(t.authOwner,url))t.extensionOwner=t.authOwner;if(tabs.contains(t)&&t==current()&&!t.home&&!address.hasFocus()&&!android.text.TextUtils.equals(address.getText(),url))address.setText(url);}
+        @Override public void onLocationChange(GeckoSession session,String url,List<GeckoSession.PermissionDelegate.ContentPermission> perms,Boolean gesture){if(url==null||!tabs.contains(t)||t.session!=session)return;t.url=url;if(t.extensionOwner!=null&&!t.addonPopupTab&&Router.parse(url).kind==Router.Kind.WEB)t.extensionOwner=null;else if(t.authOwner!=null&&"moz-extension".equals(Uri.parse(url).getScheme())&&addonUrl(t.authOwner,url))t.extensionOwner=t.authOwner;if(tabs.contains(t)&&t==current()&&!t.home&&!address.hasFocus()&&!android.text.TextUtils.equals(address.getText(),url))address.setText(url);runAutomaticScripts(t);}
         @Override public void onCanGoBack(GeckoSession session,boolean value){t.canBack=value;}
         @Override public void onCanGoForward(GeckoSession session,boolean value){t.canForward=value;}
     });t.session.setProgressDelegate(new GeckoSession.ProgressDelegate(){
@@ -1161,13 +1304,32 @@ public class MainActivity extends Activity {
                 p.setDelegate(new WebExtension.PortDelegate(){
                     @Override public void onPortMessage(Object msg,WebExtension.Port source){
                         if(tab.scriptPort!=source||tab.session!=session||!(msg instanceof JSONObject)||!tabs.contains(tab))return;
-                        JSONObject data=(JSONObject)msg;String token=tab.scriptToken;
-                        if(token==null||!"result".equals(data.optString("type"))||!token.equals(data.optString("token")))return;
-                        tab.scriptToken=null;tab.scriptStatus=data.optBoolean("ok")?"Код запущен (не подтверждает завершение задачи)":"Скрипт не запущен: "+data.optString("message","ошибка");
-                        if(!tabs.isEmpty()&&current()==tab)toast(tab.scriptStatus);
+                        JSONObject data=(JSONObject)msg;
+                        String type=data.optString("type"),document=data.optString("documentId");
+                        if("ready".equals(type)){
+                            if(!document.matches("[a-f0-9]{32}"))return;
+                            if(!document.equals(tab.scriptDocument))tab.executed.clear();
+                            tab.scriptDocument=document;tab.scriptReady=true;
+                            runAutomaticScripts(tab);
+                            return;
+                        }
+                        String token=tab.scriptToken;
+                        if(token==null||!"result".equals(type)||!document.equals(tab.scriptDocument)
+                                ||!token.equals(data.optString("token")))return;
+                        tab.scriptToken=null;
+                        boolean changed=data.optBoolean("changed");
+                        if(changed&&tab.scriptAutomatic){
+                            tab.executed.remove(data.optString("automaticId"));
+                            if(tab.url.equals(data.optString("url")))return;
+                        }
+                        tab.scriptStatus=data.optBoolean("ok")?"Код скрипта запущен":"Скрипт не запущен: "+data.optString("message","ошибка");
+                        if(!tab.scriptAutomatic&&!tabs.isEmpty()&&current()==tab)toast(tab.scriptStatus);
+                        runAutomaticScripts(tab);
                     }
-                    @Override public void onDisconnect(WebExtension.Port source){if(tab.scriptPort==source){tab.scriptPort=null;tab.scriptToken=null;tab.scriptStatus="Мост отключён";}}
+                    @Override public void onDisconnect(WebExtension.Port source){if(tab.scriptPort==source){tab.scriptPort=null;tab.scriptToken=null;tab.scriptReady=false;tab.scriptStatus="Мост отключён";}}
                 });
+                try{p.postMessage(new JSONObject().put("type","hello"));}
+                catch(JSONException|RuntimeException ignored){}
             }
         },"aetherScripts");
     }
