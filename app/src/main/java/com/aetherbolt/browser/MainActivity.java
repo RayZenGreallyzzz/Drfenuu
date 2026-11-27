@@ -933,7 +933,7 @@ public class MainActivity extends Activity {
             if(tabs.isEmpty()||addonContext()!=origin){pendingAddon=null;updatePinned();return;}
             WebExtension.Action ready=resolvedAction(e);
             if(ready==null&&SystemClock.uptimeMillis()-start<5000){chromeHandler.postDelayed(this,150);return;}
-            if(ready==null||Boolean.FALSE.equals(ready.enabled)){pendingAddon=null;updatePinned();new AlertDialog.Builder(this).setTitle(extName(e)).setMessage("Расширение не предоставило доступное действие для этой вкладки. Попробуйте на обычном сайте или откройте его собственные настройки.").setNegativeButton("Закрыть",null).setPositiveButton("Настройки",(d,w)->openAddonOptions(e)).show();return;}
+            if(ready==null||Boolean.FALSE.equals(ready.enabled)){pendingAddon=null;updatePinned();new AlertDialog.Builder(MainActivity.this).setTitle(extName(e)).setMessage("Расширение не предоставило доступное действие для этой вкладки. Попробуйте на обычном сайте или откройте его собственные настройки.").setNegativeButton("Закрыть",null).setPositiveButton("Настройки",(d,w)->openAddonOptions(e)).show();return;}
             try{ready.click();}catch(RuntimeException ex){pendingAddon=null;updatePinned();toast("Ошибка запуска расширения");return;}
             chromeHandler.postDelayed(()->{if(requestGeneration==addonRequestGeneration&&e.id.equals(pendingAddon)){pendingAddon=null;updatePinned();toast("Расширение не открыло панель. Проверьте его настройки или совместимость.");}},3500);
         }};attempt.run();
