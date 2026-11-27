@@ -1017,8 +1017,15 @@ public class MainActivity extends Activity {
         try{startActivityForResult(new Intent(Intent.ACTION_OPEN_DOCUMENT).setType("*/*").addCategory(Intent.CATEGORY_OPENABLE),SCRIPT_PICK);}
         catch(Exception e){notice("Импорт","Не удалось открыть системный выбор файлов.");}
     }
-    private boolean packageImportBusy,addonInstallBusy;
-    private boolean addonImportUnavailable(){if(packageImportBusy||addonInstallBusy){toast("Дождитесь завершения установки");return true;}return isDestroyed()||isFinishing();}
+    private boolean packageImportBusy,addonInstallBusy,addonChangeBusy;
+    private String removingAddonId;
+    private boolean addonImportUnavailable(){
+        if(isDestroyed()||isFinishing())return true;
+        if(packageImportBusy||addonInstallBusy||addonChangeBusy||removingAddonId!=null){
+            toast("Дождитесь завершения операции с расширением");return true;
+        }
+        return false;
+    }
     private void installPackageFromZip(Uri uri,String entry){
         if(addonImportUnavailable())return;
         packageImportBusy=true;
@@ -1460,6 +1467,7 @@ public class MainActivity extends Activity {
         Tab parent=current(),t=createTab();t.opener=parent;t.home=false;t.extensionOwner=e;t.title=extName(e)+" • Настройки";t.url=url;t.pendingUrl=url;active=tabs.indexOf(t);showTab();
     }
     private void launchAddon(WebExtension e){
+        if(e.id.equals(removingAddonId)){toast("Расширение удаляется");return;}
         if(clearingData||tabs.isEmpty()||e.metaData==null||!e.metaData.enabled){toast("Расширение отключено или недоступно");return;}
         pin(e);
         if(addonPopup!=null&&addonPopup.isShowing()&&e.id.equals(popupAddonId))return;
@@ -1489,13 +1497,34 @@ public class MainActivity extends Activity {
     private void configureExtensions(){extensions.setAddonManagerDelegate(new WebExtensionController.AddonManagerDelegate(){
         @Override public void onReady(WebExtension e){if(!isDestroyed()&&visibleAddon(e))registerAddon(e);}
         @Override public void onEnabled(WebExtension e){if(!isDestroyed()&&visibleAddon(e))registerAddon(e);}
-        @Override public void onDisabled(WebExtension e){if(!isDestroyed()&&visibleAddon(e)){registeredAddons.put(e.id,e);e.setDownloadDelegate(null);addonActions.remove(e.id);for(Map<String,WebExtension.Action> actions:sessionActions.values())actions.remove(e.id);if(e.id.equals(popupAddonId)&&addonPopup!=null)addonPopup.dismiss();updatePinned();}}
+        @Override public void onDisabled(WebExtension e){
+            if(!isDestroyed()&&visibleAddon(e)){
+                registeredAddons.put(e.id,e);e.setDownloadDelegate(null);clearAddonControls(e.id);updatePinned();
+            }
+        }
+        @Override public void onUninstalled(WebExtension e){
+            if(isDestroyed()||!visibleAddon(e)||e.id.equals(removingAddonId))return;
+            findInstalledAddon(e.id,remaining->{if(remaining==null)forgetAddon(e.id);},
+                error->android.util.Log.w("AetherBolt","Не удалось обновить список расширений",error));
+        }
     });extensions.setPromptDelegate(new WebExtensionController.PromptDelegate(){
         @Override public GeckoResult<WebExtension.PermissionPromptResponse> onInstallPromptRequest(WebExtension e,String[] p,String[] o,String[] d){GeckoResult<WebExtension.PermissionPromptResponse> r=new GeckoResult<>();runOnUiThread(()->{if(isFinishing()||isDestroyed()){r.complete(new WebExtension.PermissionPromptResponse(false,false,false));return;}new AlertDialog.Builder(MainActivity.this).setTitle("Установить "+extName(e)+"?").setMessage("Разрешения: "+Arrays.toString(p)+"\nСайты: "+Arrays.toString(o)+"\nДанные: "+Arrays.toString(d)).setPositiveButton("Установить",(dialog,which)->r.complete(new WebExtension.PermissionPromptResponse(true,false,false))).setNegativeButton("Отмена",(dialog,which)->r.complete(new WebExtension.PermissionPromptResponse(false,false,false))).setOnCancelListener(dialog->r.complete(new WebExtension.PermissionPromptResponse(false,false,false))).show();});return r;}
         @Override public GeckoResult<AllowOrDeny> onOptionalPrompt(WebExtension e,String[] p,String[] o,String[] d){GeckoResult<AllowOrDeny> result=new GeckoResult<>();if(isFinishing()||isDestroyed()){result.complete(AllowOrDeny.DENY);return result;}new AlertDialog.Builder(MainActivity.this).setTitle(extName(e)+" • Разрешения").setMessage("Разрешения: "+Arrays.toString(p)+"\nСайты: "+Arrays.toString(o)+"\nДанные: "+Arrays.toString(d)).setPositiveButton("Разрешить",(dialog,which)->result.complete(AllowOrDeny.ALLOW)).setNegativeButton("Отмена",(dialog,which)->result.complete(AllowOrDeny.DENY)).setOnCancelListener(dialog->result.complete(AllowOrDeny.DENY)).show();return result;}
     });extensions.list().then(list->{runOnUiThread(()->{if(!isDestroyed())for(WebExtension e:list)registerAddon(e);});return null;},err->null);}
     private String extName(WebExtension e){return e.metaData!=null&&e.metaData.name!=null?e.metaData.name:e.id;}
-    private void installFinder(){extensions.ensureBuiltIn("resource://android/assets/finder/","finder@aetherbolt.local").then(e->{runOnUiThread(()->extensionList());return null;},err->{runOnUiThread(()->notice("Ошибка модуля",String.valueOf(err)));return null;});}
+    private void installFinder(){
+        if(addonImportUnavailable())return;
+        addonInstallBusy=true;
+        try{
+            extensions.ensureBuiltIn("resource://android/assets/finder/","finder@aetherbolt.local").then(e->{
+                runOnUiThread(()->{addonInstallBusy=false;if(!isDestroyed()&&!isFinishing())extensionList();});
+                return null;
+            },error->{
+                runOnUiThread(()->{addonInstallBusy=false;if(!isDestroyed()&&!isFinishing())notice("Ошибка модуля",String.valueOf(error));});
+                return null;
+            });
+        }catch(RuntimeException error){addonInstallBusy=false;notice("Ошибка модуля",String.valueOf(error));}
+    }
     private void extensionUrl(){LinearLayout c=panel("Установить XPI","Прямая HTTPS-ссылка",false);EditText u=field("https://.../addon.xpi");add(c,u,-1,54);item(c,"↓","Продолжить","","›",()->{String url=u.getText().toString().trim();if(!url.startsWith("https://")||ScriptRules.origin(url).isEmpty()){u.setError("Нужна HTTPS-ссылка");return;}confirmXpi(url);});}
     private void confirmXpi(String url){new AlertDialog.Builder(this).setTitle("Загрузить расширение?").setMessage(url).setPositiveButton("Продолжить",(d,w)->installXpi(url)).setNegativeButton("Отмена",null).show();}
     private void installXpi(String uri){startAddonInstall(uri,null);}
@@ -1521,7 +1550,158 @@ public class MainActivity extends Activity {
     }
     private void showAddonInstallError(Throwable error){if(isDestroyed()||isFinishing())return;Throwable cause=error;while(cause!=null&&!(cause instanceof WebExtension.InstallException)&&cause.getCause()!=cause)cause=cause.getCause();String detail=String.valueOf(error);if(cause instanceof WebExtension.InstallException){int code=((WebExtension.InstallException)cause).code;String hint;switch(code){case WebExtension.InstallException.ErrorCodes.ERROR_INCOMPATIBLE:hint="Расширение несовместимо с Android / GeckoView.";break;case WebExtension.InstallException.ErrorCodes.ERROR_SIGNEDSTATE_REQUIRED:hint="Подпись Mozilla отсутствует или не принята.";break;case WebExtension.InstallException.ErrorCodes.ERROR_CORRUPT_FILE:hint="Движок не принял содержимое XPI.";break;case WebExtension.InstallException.ErrorCodes.ERROR_NETWORK_FAILURE:hint="Ошибка скачивания расширения.";break;case WebExtension.InstallException.ErrorCodes.ERROR_FILE_ACCESS:hint="Ошибка доступа к файлу.";break;case WebExtension.InstallException.ErrorCodes.ERROR_USER_CANCELED:toast("Установка отменена");return;default:hint="GeckoView отклонил установку.";}detail=hint+"\nКод GeckoView: "+code+"\n"+detail;}final String report=detail;new AlertDialog.Builder(this).setTitle("Ошибка установки XPI").setMessage(report).setPositiveButton("OK",null).setNeutralButton("Копировать",(d,w)->{android.content.ClipboardManager clipboard=(android.content.ClipboardManager)getSystemService(CLIPBOARD_SERVICE);clipboard.setPrimaryClip(android.content.ClipData.newPlainText("XPI error",report));}).show();}
     private void extensionList(){LinearLayout c=panel("Расширения","Менеджер GeckoView",false);item(c,"+","Установить из файла","XPI / ZIP / CRX / USER.JS / JS","›",this::importAddonPicker);extensions.list().then(list->{runOnUiThread(()->{if(isDestroyed()||!c.isAttachedToWindow())return;if(list.isEmpty())section(c,"НЕТ РАСШИРЕНИЙ");for(WebExtension e:list){if(!visibleAddon(e))continue;if(!registeredAddons.containsKey(e.id))registerAddon(e);boolean enabled=e.metaData!=null&&e.metaData.enabled;item(c,"✧",extName(e),enabled?"Включено":"Выключено","›",()->extensionDetail(e));}});return null;},err->{runOnUiThread(()->toast("Ошибка списка: "+err));return null;});}
-    private void extensionDetail(WebExtension e){boolean enabled=e.metaData!=null&&e.metaData.enabled;LinearLayout c=panel(extName(e),e.id,false);if(enabled){item(c,"↗","Открыть расширение","Оригинальная панель расширения","›",()->launchAddon(e));if(e.metaData.optionsPageUrl!=null)item(c,"⚙","Настройки расширения","Открыть собственную страницу настроек в новой вкладке","›",()->openAddonOptions(e));}item(c,"✓",enabled?"Отключить":"Включить","Действие на уровне движка",enabled?"●":"○",()->{GeckoResult<WebExtension> result=enabled?extensions.disable(e,WebExtensionController.EnableSource.USER):extensions.enable(e,WebExtensionController.EnableSource.USER);result.then(updated->{runOnUiThread(()->{registerAddon(updated);if(updated.metaData!=null&&updated.metaData.enabled)pin(updated);else updatePinned();extensionDetail(updated);});return null;},err->{runOnUiThread(()->notice("Ошибка",String.valueOf(err)));return null;});});item(c,"×","Удалить","","›",()->new AlertDialog.Builder(this).setTitle("Удалить "+extName(e)+"?").setNegativeButton("Отмена",null).setPositiveButton("Удалить",(d,w)->extensions.uninstall(e).then(v->{runOnUiThread(()->{registeredAddons.remove(e.id);addonActions.remove(e.id);if(e.id.equals(pinnedId)){pinnedId="";prefs.edit().remove("pinnedAddon").apply();}updatePinned();extensionList();});return null;},err->{runOnUiThread(()->notice("Ошибка",String.valueOf(err)));return null;})).show());}
+    private void extensionDetail(WebExtension e){
+        boolean enabled=e.metaData!=null&&e.metaData.enabled;
+        LinearLayout c=panel(extName(e),e.id,false);
+        if(enabled){
+            item(c,"↗","Открыть расширение","Оригинальная панель расширения","›",()->launchAddon(e));
+            if(e.metaData.optionsPageUrl!=null){
+                item(c,"⚙","Настройки расширения","Открыть собственную страницу настроек в новой вкладке","›",()->openAddonOptions(e));
+            }
+        }
+        item(c,"✓",enabled?"Отключить":"Включить","",enabled?"●":"○",()->{
+            if(addonImportUnavailable())return;
+            addonChangeBusy=true;
+            try{
+                GeckoResult<WebExtension> result=enabled?extensions.disable(e,WebExtensionController.EnableSource.USER)
+                    :extensions.enable(e,WebExtensionController.EnableSource.USER);
+                result.then(updated->{runOnUiThread(()->{
+                    addonChangeBusy=false;
+                    if(isDestroyed()||isFinishing())return;
+                    if(updated.metaData!=null&&updated.metaData.enabled){registerAddon(updated);pin(updated);}
+                    else{registeredAddons.put(updated.id,updated);updated.setDownloadDelegate(null);clearAddonControls(updated.id);updatePinned();}
+                    if(c.isAttachedToWindow())extensionDetail(updated);
+                });return null;},error->{runOnUiThread(()->{
+                    addonChangeBusy=false;
+                    if(!isDestroyed()&&!isFinishing())notice("Расширения",String.valueOf(error));
+                });return null;});
+            }catch(RuntimeException error){addonChangeBusy=false;notice("Расширения",String.valueOf(error));}
+        });
+        item(c,"×","Удалить","","›",()->new AlertDialog.Builder(this).setTitle("Удалить "+extName(e)+"?")
+            .setNegativeButton("Отмена",null).setPositiveButton("Удалить",(dialog,which)->removeAddon(e.id)).show());
+    }
+
+    private void findInstalledAddon(String id,java.util.function.Consumer<WebExtension> found,
+                                   java.util.function.Consumer<Throwable> failed){
+        try{
+            extensions.list().then(list->{
+                runOnUiThread(()->{
+                    if(isDestroyed()||isFinishing())return;
+                    for(WebExtension addon:list){
+                        if(id.equals(addon.id)){found.accept(addon);return;}
+                    }
+                    found.accept(null);
+                });
+                return null;
+            },error->{
+                runOnUiThread(()->{if(!isDestroyed()&&!isFinishing())failed.accept(error);});
+                return null;
+            });
+        }catch(RuntimeException error){failed.accept(error);}
+    }
+
+    private void removeAddon(String id){
+        if(addonImportUnavailable())return;
+        removingAddonId=id;
+        FrameLayout detail=overlay;
+        findInstalledAddon(id,addon->{
+            if(addon==null){finishAddonRemoval(id,detail);return;}
+            closeAddonPages(id);
+            requestAddonUninstall(addon,detail,false);
+        },error->showAddonRemovalFailure(null,error));
+    }
+
+    private void requestAddonUninstall(WebExtension addon,FrameLayout detail,boolean retried){
+        try{
+            extensions.uninstall(addon).then(ignored->{
+                runOnUiThread(()->verifyAddonRemoval(addon.id,detail,retried,null));
+                return null;
+            },error->{
+                runOnUiThread(()->verifyAddonRemoval(addon.id,detail,retried,error));
+                return null;
+            });
+        }catch(RuntimeException error){verifyAddonRemoval(addon.id,detail,retried,error);}
+    }
+
+    private void verifyAddonRemoval(String id,FrameLayout detail,boolean retried,Throwable uninstallError){
+        if(isDestroyed()||isFinishing()||!id.equals(removingAddonId))return;
+        findInstalledAddon(id,remaining->{
+            if(remaining==null){finishAddonRemoval(id,detail);return;}
+            if(retried||remaining.metaData==null||!remaining.metaData.enabled){
+                showAddonRemovalFailure(remaining,uninstallError);
+                return;
+            }
+            try{
+                extensions.disable(remaining,WebExtensionController.EnableSource.USER).then(disabled->{
+                    runOnUiThread(()->{
+                        if(!isDestroyed()&&!isFinishing()&&id.equals(removingAddonId)){
+                            requestAddonUninstall(disabled,detail,true);
+                        }
+                    });
+                    return null;
+                },error->{
+                    runOnUiThread(()->verifyAddonRemoval(id,detail,true,error));
+                    return null;
+                });
+            }catch(RuntimeException error){verifyAddonRemoval(id,detail,true,error);}
+        },error->showAddonRemovalFailure(null,error));
+    }
+
+    private void clearAddonControls(String id){
+        addonActions.remove(id);
+        for(Map<String,WebExtension.Action> actions:sessionActions.values())actions.remove(id);
+        closeAddonPopup(id);
+    }
+
+    private void closeAddonPopup(String id){
+        if(id.equals(pendingAddon)){pendingAddon=null;addonRequestGeneration++;}
+        if(id.equals(popupAddonId)&&addonPopup!=null)addonPopup.dismiss();
+    }
+
+    private void closeAddonPages(String id){
+        closeAddonPopup(id);
+        for(int i=tabs.size()-1;i>=0;i--){
+            Tab tab=tabs.get(i);
+            if(tab.extensionOwner!=null&&id.equals(tab.extensionOwner.id)
+                    &&Router.parse(tab.url).kind!=Router.Kind.WEB){
+                closeTab(i);
+            }
+        }
+    }
+
+    private void forgetAddon(String id){
+        registeredAddons.remove(id);
+        clearAddonControls(id);
+        closeAddonPages(id);
+        for(Tab tab:tabs){
+            if(tab.authOwner!=null&&id.equals(tab.authOwner.id))tab.authOwner=null;
+        }
+        if(id.equals(pinnedId)){pinnedId="";prefs.edit().remove("pinnedAddon").apply();}
+        updatePinned();
+    }
+
+    private void finishAddonRemoval(String id,FrameLayout detail){
+        removingAddonId=null;
+        forgetAddon(id);
+        toast("Расширение удалено");
+        if(overlay==detail){dismissPanel();extensionList();}
+    }
+
+    private void showAddonRemovalFailure(WebExtension remaining,Throwable error){
+        removingAddonId=null;
+        if(isDestroyed()||isFinishing())return;
+        if(error!=null)android.util.Log.w("AetherBolt","GeckoView не подтвердил удаление расширения",error);
+        if(remaining==null){notice("Расширения","Не удалось проверить удаление. Откройте список расширений и повторите.");return;}
+        if(remaining.metaData!=null&&!remaining.metaData.enabled){
+            registeredAddons.put(remaining.id,remaining);remaining.setDownloadDelegate(null);clearAddonControls(remaining.id);
+        }else registerAddon(remaining);
+        updatePinned();
+        String message=remaining.metaData!=null&&!remaining.metaData.enabled
+            ?"Расширение отключено, но GeckoView не удалил его."
+            :"GeckoView не удалил расширение. Оно осталось в списке.";
+        new AlertDialog.Builder(this).setTitle(extName(remaining)).setMessage(message)
+            .setPositiveButton("OK",(dialog,which)->extensionList()).show();
+    }
     private boolean updateBusy=false; private java.io.File preparedUpdate;
     private void updatePanel(){LinearLayout c=panel("Обновление браузера","AetherBolt Delta • локальные патчи",false);item(c,"+","Открыть патч .aeb","Только для установленной версии и той же подписи","›",()->pickLocal(705));if(preparedUpdate!=null&&preparedUpdate.isFile())item(c,"✓","Установить обновление","Подтверждение через Android","›",()->installPrepared());}
     private void applyUpdate(Uri uri){if(updateBusy){toast("Патч уже обрабатывается");return;}updateBusy=true;notice("Обновление","Восстановление APK и проверка подписи…");new Thread(()->{try(java.io.InputStream in=getContentResolver().openInputStream(uri)){java.io.File f=DeltaUpdate.apply(this,in);runOnUiThread(()->{updateBusy=false;if(isDestroyed()){f.delete();return;}if(preparedUpdate!=null)preparedUpdate.delete();preparedUpdate=f;dismissPanel();updatePanel();installPrepared();});}catch(Exception ex){runOnUiThread(()->{updateBusy=false;if(!isDestroyed())notice("Ошибка обновления",String.valueOf(ex.getMessage()));});}}).start();}
