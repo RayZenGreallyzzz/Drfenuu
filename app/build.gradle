@@ -38,7 +38,7 @@ tasks.named('preBuild').configure { dependsOn tasks.named('prepareDevSuite') }
 // The approved art pack contains only Android drawable resources.
 def brandingArchive = rootProject.file('aetherbolt-branding.zip')
 def brandingRes = layout.buildDirectory.dir('generated/aetherBranding/res')
-android.sourceSets.main.res.srcDir(brandingRes)
+android.sourceSets.main.res.srcDir(brandingRes.get().asFile)
 tasks.register('prepareAetherBranding', Sync) {
     from({ zipTree(brandingArchive) }) {
         include 'drawable-nodpi/aether_icon.png', 'drawable-nodpi/aether_adaptive_fg.png', 'drawable-nodpi/aether_monster.jpg'
