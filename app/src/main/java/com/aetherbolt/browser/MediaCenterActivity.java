@@ -24,16 +24,17 @@ public final class MediaCenterActivity extends Activity {
     private SeekBar seek;
     private Uri current;
     private String currentName="Медиацентр";
-    private boolean dragging,closed;
+    private boolean dragging,closed,visible;
+    private final VideoPowerPolicy videoPower=new VideoPowerPolicy();
     private final Runnable tick=new Runnable(){public void run(){
-        if(closed)return;
+        if(closed||!visible||controls.getVisibility()!=View.VISIBLE)return;
         if(player!=null)try{
             long length=player.getLength(),pos=Math.max(0,player.getTime());
             if(!dragging)seek.setProgress(length>0?(int)Math.min(1000,1000.0*pos/length):0);
             seek.setEnabled(length>0&&player.isSeekable());
             time.setText(formatTime(pos)+" / "+(length>0?formatTime(length):"—"));
         }catch(RuntimeException ignored){}
-        handler.postDelayed(this,500);
+        handler.postDelayed(this,1000);
     }};
     private int dp(int x){return Math.round(x*getResources().getDisplayMetrics().density);}
     static boolean isMedia(String n,String mime){
@@ -62,7 +63,7 @@ public final class MediaCenterActivity extends Activity {
         root.addView(controls,new FrameLayout.LayoutParams(-1,-2,Gravity.BOTTOM));
         setContentView(root);immersive();
         Uri supplied=getIntent().getData();if(supplied!=null&&"content".equals(supplied.getScheme()))open(supplied,getIntent().getStringExtra("title"));else pick();
-        handler.post(tick);
+        videoPower.apply(getWindow(),getSharedPreferences("aetherbolt",MODE_PRIVATE).getBoolean("videoEco",true));
     }
     private LinearLayout row(){LinearLayout r=new LinearLayout(this);r.setGravity(Gravity.CENTER_VERTICAL);r.setOrientation(LinearLayout.HORIZONTAL);return r;}
     private TextView text(String s,int size){TextView t=new TextView(this);t.setText(s);t.setTextSize(size);t.setTextColor(TEXT);t.setGravity(Gravity.CENTER_VERTICAL);return t;}
@@ -81,7 +82,7 @@ public final class MediaCenterActivity extends Activity {
             player.setEventListener(event->runOnUiThread(()->{if(closed||player!=active)return;switch(event.type){
                 case MediaPlayer.Event.Playing:play.setText("Ⅱ");status.setText("Воспроизведение");break;
                 case MediaPlayer.Event.Paused:play.setText("▶");status.setText("Пауза");break;
-                case MediaPlayer.Event.Buffering:status.setText("Буферизация");break;
+                case MediaPlayer.Event.Buffering:if(event.getBuffering()<100&&!android.text.TextUtils.equals(status.getText(),"Буферизация"))status.setText("Буферизация");break;
                 case MediaPlayer.Event.EndReached:play.setText("▶");status.setText("Воспроизведение завершено");showControls(true);break;
                 case MediaPlayer.Event.EncounteredError:play.setText("▶");status.setText("Ошибка декодирования. Попробуйте другой проигрыватель.");showControls(true);break;
                 default:break;
@@ -103,10 +104,11 @@ public final class MediaCenterActivity extends Activity {
     private void jump(long delta){if(player!=null&&player.isSeekable()){long next=Math.max(0,player.getTime()+delta);if(player.getLength()>0)next=Math.min(next,player.getLength());player.setTime(next);}}
     private static String formatTime(long ms){long sec=Math.max(0,ms/1000);return sec>=3600?String.format(Locale.ROOT,"%d:%02d:%02d",sec/3600,sec/60%60,sec%60):String.format(Locale.ROOT,"%02d:%02d",sec/60,sec%60);}
     private void external(){if(current==null)return;try{String m=getContentResolver().getType(current);Intent i=new Intent(Intent.ACTION_VIEW).setDataAndType(current,m==null?"*/*":m).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);startActivity(Intent.createChooser(i,"Открыть в другом проигрывателе"));}catch(Exception e){status.setText("Нет приложения для этого файла");}}
-    private void showControls(boolean show){top.setVisibility(show?View.VISIBLE:View.GONE);controls.setVisibility(show?View.VISIBLE:View.GONE);immersive();}
+    private void showControls(boolean show){top.setVisibility(show?View.VISIBLE:View.GONE);controls.setVisibility(show?View.VISIBLE:View.GONE);handler.removeCallbacks(tick);if(show&&visible)handler.post(tick);immersive();}
     private void immersive(){if(Build.VERSION.SDK_INT>=30){WindowInsetsController c=getWindow().getInsetsController();if(c!=null){c.setSystemBarsBehavior(WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);c.hide(WindowInsets.Type.systemBars());}}else getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_FULLSCREEN|View.SYSTEM_UI_FLAG_HIDE_NAVIGATION|View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY);}
     @Override public void onWindowFocusChanged(boolean hasFocus){super.onWindowFocusChanged(hasFocus);if(hasFocus)immersive();}
-    @Override protected void onStop(){if(player!=null&&player.isPlaying())player.pause();super.onStop();}
+    @Override protected void onStart(){super.onStart();visible=true;handler.removeCallbacks(tick);if(controls.getVisibility()==View.VISIBLE)handler.post(tick);}
+    @Override protected void onStop(){visible=false;handler.removeCallbacks(tick);if(player!=null&&player.isPlaying())player.pause();super.onStop();}
     private void releasePlayer(){if(player!=null){try{player.setEventListener(null);player.stop();player.detachViews();player.release();}catch(Exception ignored){}player=null;}if(lib!=null){try{lib.release();}catch(Exception ignored){}lib=null;}if(file!=null){try{file.close();}catch(Exception ignored){}file=null;}}
-    @Override protected void onDestroy(){closed=true;handler.removeCallbacksAndMessages(null);releasePlayer();super.onDestroy();}
+    @Override protected void onDestroy(){closed=true;handler.removeCallbacksAndMessages(null);releasePlayer();videoPower.apply(getWindow(),false);super.onDestroy();}
 }
