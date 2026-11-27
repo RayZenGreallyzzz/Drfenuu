@@ -1,0 +1,2 @@
+# 0.9.6.1 Quick access restoration
+User feedback on 0.9.5: restore original DevSuite shortcut to the right of reload and extensions shortcut to fourth position on bottom toolbar. Developer shortcut enabled by default; existing explicit user preference respected. Menu also directly exposes DevSuite and extensions; bookmarks remain on home/menu. No additional toolbar buttons or second web session. Layout reset restores usual controls. All 0.9.6 tools retained. Device testing pending; stable branch unchanged.
