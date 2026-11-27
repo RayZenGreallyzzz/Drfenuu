@@ -29,26 +29,96 @@ final class FileTransfers {
     private final Map<String,Job> downloads=new java.util.concurrent.ConcurrentHashMap<>();
     private final java.util.concurrent.atomic.AtomicLong revision=new java.util.concurrent.atomic.AtomicLong();
     private Runnable changed;
+    private boolean destroyed;
+    private int running;
+    private static final int MAX_PENDING=12;
     void setChanged(Runnable callback){changed=callback;}
     long revision(){return revision.get();}
     private void notifyChanged(){revision.incrementAndGet();ui.runOnUiThread(()->{if(!ui.isDestroyed()&&changed!=null)changed.run();});}
     static final class Job {
-        final String id=UUID.randomUUID().toString(),name;final long total,started=System.currentTimeMillis();final WebResponse response;
-        volatile long bytes;volatile boolean cancelled,done;volatile String status="Скачивание";
-        Job(String name,long total,WebResponse response){this.name=name;this.total=total;this.response=response;}
+        final String id=UUID.randomUUID().toString(),name,type;
+        final long total,started=System.currentTimeMillis();final WebResponse response;
+        volatile long bytes,speed;
+        volatile boolean cancelled,done,paused,scheduled,committing;
+        volatile String status="В очереди";
+        Job(String name,String type,long total,WebResponse response){this.name=name;this.type=type;this.total=total;this.response=response;}
         boolean busy(){return !done;}
+        boolean canPause(){return !done&&!cancelled&&!committing;}
     }
-    List<Job> jobs(){ArrayList<Job> list=new ArrayList<>(downloads.values());list.sort(Comparator.comparingLong((Job j)->j.started).reversed());return list;}
+    List<Job> jobs(){ArrayList<Job> list=new ArrayList<>(downloads.values());list.sort(Comparator.comparingLong((Job j)->j.started).reversed().thenComparing(j->j.id));return list;}
     boolean hasPendingUpload(GeckoSession session){return uploadSession==session;}
     int activeCount(){int n=0;for(Job j:downloads.values())if(j.busy())n++;return n;}
-    void cancel(Job j){if(j.done)return;j.cancelled=true;j.status="Отмена…";new Thread(()->close(j.response),"aether-download-cancel").start();}
+    int parallelLimit(){return Math.max(1,Math.min(3,prefs.getInt("downloadParallel",2)));}
+    void setParallelLimit(int n){prefs.edit().putInt("downloadParallel",Math.max(1,Math.min(3,n))).apply();dispatch();notifyChanged();}
+    private synchronized void enqueue(WebResponse response,String name,String type){
+        if(destroyed||activeCount()>=MAX_PENDING){closeAsync(response);toast("Очередь заполнена или браузер закрыт");return;}
+        Job j=new Job(name,type,responseLength(response),response);
+        downloads.put(j.id,j);dispatch();notifyChanged();
+    }
+    private synchronized void dispatch(){
+        if(destroyed)return;
+        ArrayList<Job> list=new ArrayList<>(downloads.values());list.sort(Comparator.comparingLong((Job j)->j.started).thenComparing(j->j.id));
+        for(Job j:list){
+            if(running>=parallelLimit())break;
+            if(j.done||j.cancelled||j.paused||j.scheduled)continue;
+            j.scheduled=true;j.status="Скачивание";running++;
+            new Thread(()->{
+                android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND);
+                try{save(j.response,j.name,j.type,j);}finally{workerFinished();}
+            },"aether-download").start();
+        }
+    }
+    private synchronized void workerFinished(){running=Math.max(0,running-1);dispatch();}
+    private static void closeAsync(WebResponse response){new Thread(()->close(response),"aether-download-close").start();}
+    void setPaused(Job j,boolean pause){
+        synchronized(this){
+            synchronized(j){
+                if(!j.canPause())return;
+                j.paused=pause;j.speed=0;
+                j.status=pause?"Пауза":j.scheduled?"Скачивание":"В очереди";j.notifyAll();
+            }
+            if(!pause)dispatch();
+        }
+        notifyChanged();
+    }
+    void cancel(Job j){
+        synchronized(this){
+            synchronized(j){
+                if(j.done||j.cancelled||j.committing)return;
+                j.cancelled=true;j.paused=false;j.speed=0;j.status="Отмена…";j.notifyAll();
+                if(!j.scheduled){j.done=true;j.status="Отменено";}
+            }
+            dispatch();
+        }
+        closeAsync(j.response);notifyChanged();
+    }
     void dismiss(Job j){if(j.done){downloads.remove(j.id,j);notifyChanged();}}
     private long responseLength(WebResponse r){try{return Math.max(-1,Long.parseLong(r.headers.get("content-length")));}catch(Exception ex){return -1;}}
+    private static void awaitReading(Job j)throws IOException{
+        synchronized(j){
+            while(j.paused&&!j.cancelled){
+                try{j.wait();}catch(InterruptedException e){Thread.currentThread().interrupt();throw new InterruptedIOException("Прервано");}
+            }
+            if(j.cancelled)throw new InterruptedIOException("Загрузка отменена");
+        }
+    }
+    private static void beginCommit(Job j)throws IOException{
+        synchronized(j){
+            if(j.cancelled)throw new InterruptedIOException("Загрузка отменена");
+            j.committing=true;j.paused=false;j.speed=0;j.status="Сохранение";
+        }
+    }
     private static long copyJob(InputStream in,OutputStream out,Job job)throws IOException{
-        byte[] buf=new byte[65536];long total=0;int n;
-        while(!job.cancelled&&(n=in.read(buf))!=-1){if(job.cancelled)break;out.write(buf,0,n);total+=n;job.bytes=total;}
-        if(job.cancelled)throw new java.io.InterruptedIOException("Загрузка отменена");
-        out.flush();return total;
+        byte[] buf=new byte[65536];long total=0,sampleBytes=0,sampleTime=android.os.SystemClock.elapsedRealtime();
+        for(;;){
+            boolean wasPaused=job.paused;awaitReading(job);
+            if(wasPaused){sampleBytes=total;sampleTime=android.os.SystemClock.elapsedRealtime();}
+            int n=in.read(buf);if(n<0)break;
+            awaitReading(job);out.write(buf,0,n);total+=n;job.bytes=total;
+            long now=android.os.SystemClock.elapsedRealtime(),elapsed=now-sampleTime;
+            if(elapsed>=1000){job.speed=(long)((total-sampleBytes)*1000.0/elapsed);sampleBytes=total;sampleTime=now;}
+        }
+        awaitReading(job);out.flush();return total;
     }
     FileTransfers(Activity a){ui=a;prefs=a.getSharedPreferences("aetherbolt",Activity.MODE_PRIVATE);}
     private void toast(String s){ui.runOnUiThread(()->{if(!ui.isDestroyed())Toast.makeText(ui,s,Toast.LENGTH_LONG).show();});}
@@ -78,7 +148,7 @@ final class FileTransfers {
         uploadSession=null;uploadPrompt=null;uploadResult=null;
         if(p!=null&&r!=null&&!p.isComplete())r.complete(p.dismiss());
     }
-    void destroy(){if(uploadSession!=null)cancelUpload(uploadSession);exportEntry=null;}
+    void destroy(){if(uploadSession!=null)cancelUpload(uploadSession);exportEntry=null;synchronized(this){destroyed=true;}for(Job j:jobs())if(j.busy())cancel(j);changed=null;}
     boolean onActivityResult(int request,int result,Intent data){
         if(request==PICK){
             pickerOpen=false;GeckoSession.PromptDelegate.FilePrompt p=uploadPrompt;GeckoResult<GeckoSession.PromptDelegate.PromptResponse> r=uploadResult;
@@ -122,9 +192,14 @@ final class FileTransfers {
         if(ui.isDestroyed()||ui.isFinishing()){close(response);return;}
         String name=filename(URLUtil.guessFileName(response.uri,response.headers.get("content-disposition"),response.headers.get("content-type")));
         String type=mime(response.headers.get("content-type"),name);
-        Runnable save=()->{Job job=new Job(name,responseLength(response),response);downloads.put(job.id,job);notifyChanged();toast("Скачивание: "+name);new Thread(()->save(response,name,type,job),"aether-download").start();};
+        Runnable save=()->enqueue(response,name,type);
         if(response.skipConfirmation){save.run();return;}
         new AlertDialog.Builder(ui).setTitle("Скачать файл?").setMessage(name).setPositiveButton("Скачать",(d,w)->save.run()).setNegativeButton("Отмена",(d,w)->close(response)).setOnCancelListener(d->close(response)).show();
+    }
+    private static void verifyLength(WebResponse response,Job job,long bytes)throws IOException{
+        String encoding=response.headers.get("content-encoding");
+        if(job.total>=0&&(encoding==null||"identity".equalsIgnoreCase(encoding))&&bytes!=job.total)
+            throw new EOFException("Размер файла не совпадает; начните скачивание заново");
     }
     private void save(WebResponse response,String name,String type,Job job){
         Uri dest=null;File part=null;boolean finished=false;
@@ -134,16 +209,16 @@ final class FileTransfers {
                 dest=ui.getContentResolver().insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI,values);
                 if(dest==null)throw new IOException("Не удалось создать файл Download");
                 long bytes;try(OutputStream out=ui.getContentResolver().openOutputStream(dest,"w")){if(out==null)throw new IOException("Нет потока записи");bytes=copyJob(in,out,job);}
-                if(job.cancelled)throw new java.io.InterruptedIOException("Отменено");job.status="Сохранение";ContentValues ready=new ContentValues();ready.put(MediaStore.MediaColumns.IS_PENDING,0);if(ui.getContentResolver().update(dest,ready,null,null)<1)throw new IOException("Не удалось завершить запись");
+                verifyLength(response,job,bytes);beginCommit(job);ContentValues ready=new ContentValues();ready.put(MediaStore.MediaColumns.IS_PENDING,0);if(ui.getContentResolver().update(dest,ready,null,null)<1)throw new IOException("Не удалось завершить запись");
                 String savedName=name;try(android.database.Cursor c=ui.getContentResolver().query(dest,new String[]{MediaStore.MediaColumns.DISPLAY_NAME},null,null,null)){if(c!=null&&c.moveToFirst())savedName=c.getString(0);}catch(Exception ignored){}
                 record(new Entry(savedName,type,bytes,dest,null));finished=true;toast("Сохранено в Download/AetherBolt: "+savedName);
             }else{
                 File folder=dir();part=File.createTempFile(".download-", ".part",folder);long bytes;
                 try(OutputStream out=new FileOutputStream(part)){bytes=copyJob(in,out,job);}
-                if(job.cancelled)throw new java.io.InterruptedIOException("Отменено");job.status="Сохранение";File target=new File(folder,System.currentTimeMillis()+"-"+name);if(!part.renameTo(target))throw new IOException("Не удалось завершить файл");
+                verifyLength(response,job,bytes);beginCommit(job);File target=new File(folder,System.currentTimeMillis()+"-"+name);if(!part.renameTo(target))throw new IOException("Не удалось завершить файл");
                 finished=true;toast("Сохранено в Загрузках браузера: "+target.getName());
             }
-        }catch(Exception e){job.status=job.cancelled?"Отменено":"Ошибка: "+String.valueOf(e.getMessage());toast(job.status);}finally{if(!finished&&dest!=null)try{ui.getContentResolver().delete(dest,null,null);}catch(Exception ignored){}if(part!=null&&part.exists())part.delete();job.done=true;if(finished)downloads.remove(job.id,job);notifyChanged();}
+        }catch(Exception e){job.status=job.cancelled?"Отменено":"Ошибка: "+String.valueOf(e.getMessage());toast(job.status);}finally{if(!finished&&dest!=null)try{ui.getContentResolver().delete(dest,null,null);}catch(Exception ignored){}if(part!=null&&part.exists())part.delete();job.speed=0;job.done=true;if(finished)downloads.remove(job.id,job);notifyChanged();}
     }
     private synchronized void record(Entry e)throws JSONException{
         JSONArray old=records();JSONObject item=new JSONObject().put("uri",e.publicUri.toString()).put("name",e.name).put("mime",e.mime).put("bytes",e.bytes).put("date",e.date);

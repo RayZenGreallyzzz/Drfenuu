@@ -204,7 +204,7 @@ public class MainActivity extends Activity {
         String[] names={"Google","DuckDuckGo","Bing","Brave Search","Qwant","Яндекс","Ahmia","Добавить"};String[] icons={"G","D","b","B","Q","Я","◎","+"};int[] colors={0xff79aaff,0xffff9c50,CYAN,0xffff855d,PURPLE,0xffff7d8a,0xffc69cff,TEXT};Runnable[] actions=new Runnable[8];for(int i=0;i<6;i++){final int n=i;actions[i]=()->setEngine(Router.ENGINES[n][0],Router.ENGINES[n][1]);}actions[6]=()->setEngine(Router.ENGINES[10][0],Router.ENGINES[10][1]);actions[7]=()->customEngine();
         int cols=getResources().getConfiguration().screenWidthDp>=720?8:4;grid(box,names,icons,colors,actions,cols);
         grid(box,new String[]{"Дополнения","Загрузки","Закладки","История","Настройки","Вкладки"},new String[]{"✧","↓","☆","◷","⚙","▣"},new int[]{PURPLE,CYAN},new Runnable[]{()->quickAddons(),()->downloadPanel(),()->listDialog("Закладки",bookmarks,"bookmarks"),()->listDialog("История",history,"history"),()->settings(),()->tabDialog()},getResources().getConfiguration().screenWidthDp>=650?6:3);
-        TextView note=label("GECKO ALPHA 0.8.5   •   Tor Engine • эксперимент",11,MUTED);note.setGravity(Gravity.CENTER);add(box,note,-1,28);return sc;
+        TextView note=label("GECKO ALPHA 0.8.6   •   Tor Engine • эксперимент",11,MUTED);note.setGravity(Gravity.CENTER);add(box,note,-1,28);return sc;
     }
 
     private android.graphics.drawable.Drawable ripple(int color,int radius,int stroke){return new android.graphics.drawable.RippleDrawable(android.content.res.ColorStateList.valueOf(0x337f8cff),shape(color,radius,stroke),null);}
@@ -431,7 +431,8 @@ public class MainActivity extends Activity {
         int n=transfers.activeCount();downloadButton.setText(n>0?String.valueOf(n):"");downloadButton.setCompoundDrawablePadding(dp(3));downloadButton.setCompoundDrawables(n>0?icon("↓",CYAN,19):null,n==0?icon("↓",TEXT,23):null,null,null);downloadButton.setContentDescription(n>0?"Загрузки: "+n+" в процессе":"Загрузки");
     }
     private void downloadPanel(){
-        LinearLayout c=panel("Загрузки","AetherBolt • Все скачанные файлы",false);
+        LinearLayout c=panel("Загрузки","Download Accelerator • AetherBolt",false);
+        item(c,"⚙","Настройки скачивания","Параллельно: "+transfers.parallelLimit()+" • очередь и пауза","›",this::downloadSettings);
         EditText search=field("Поиск файлов по названию");add(c,search,-1,48);
         section(c,"ТЕКУЩИЕ ЗАГРУЗКИ");
         LinearLayout activeJobs=column();c.addView(activeJobs);
@@ -443,27 +444,70 @@ public class MainActivity extends Activity {
         item(c,"↻","Обновить список","","›",files);
         item(c,"▤","Открыть системную папку","Download / AetherBolt","›",()->{try{startActivity(new Intent(android.app.DownloadManager.ACTION_VIEW_DOWNLOADS));}catch(Exception e){toast("Откройте приложение Файлы → Download");}});
         files.run();
-        final long[] generation={-1};
+        final long[] generation={transfers.revision()};
         Runnable tick=new Runnable(){public void run(){
             if(isDestroyed()||!c.isAttachedToWindow())return;
             renderDownloadJobs(activeJobs);
             long revision=transfers.revision();if(generation[0]!=revision){generation[0]=revision;files.run();}
-            c.postDelayed(this,750);
+            if(transfers.activeCount()>0)c.postDelayed(this,1000);else c.postDelayed(this,2500);
         }};
         c.post(tick);c.addOnAttachStateChangeListener(new View.OnAttachStateChangeListener(){public void onViewAttachedToWindow(View v){c.removeCallbacks(tick);c.post(tick);}public void onViewDetachedFromWindow(View v){c.removeCallbacks(tick);}});
     }
-    private void renderDownloadJobs(LinearLayout c){
-        c.removeAllViews();List<FileTransfers.Job> jobs=transfers.jobs();
-        if(jobs.isEmpty()){add(c,label("Нет активных загрузок",13,MUTED),-1,40);return;}
-        for(FileTransfers.Job j:jobs){
-            LinearLayout card=column();card.setPadding(dp(12),dp(8),dp(12),dp(8));card.setBackground(glass(15,0xff343c64));
+    private void downloadSettings(){
+        LinearLayout c=panel("Download Accelerator","Настройки очереди загрузок",false);
+        section(c,"ОДНОВРЕМЕННЫЕ СКАЧИВАНИЯ");
+        for(int n=1;n<=3;n++){final int limit=n;item(c,"↓",n==1?"1 • Экономия":n==2?"2 • Баланс":"3 • Быстрее при свободной сети",n==1?"Минимум конкурирующей нагрузки":n==2?"Рекомендуемый режим":"Не гарантирует рост скорости",transfers.parallelLimit()==n?"●":"○",()->{transfers.setParallelLimit(limit);downloadSettings();});}
+        section(c,"ОГРАНИЧЕНИЯ");
+        item(c,"◎","Пауза чтения","Соединение сохраняется, пока сервер позволяет. Пауза активного файла удерживает его слот. При обрыве нужно начать заново.","",()->{});
+        item(c,"◎","Авторизованные файлы","Скачиваются из исходного ответа GeckoView. Повторные запросы вне браузера не выполняются.","",()->{});
+        item(c,"◎","Очередь","До 12 незавершённых задач; изменение лимита не прерывает уже начатые файлы. При закрытии Activity незавершённые задачи отменяются.","",()->{});
+    }
+    private final class DownloadCard {
+        final FileTransfers.Job job;final LinearLayout card;
+        final TextView detail,pause,cancel;
+        final ProgressBar bar;
+        DownloadCard(FileTransfers.Job j){
+            job=j;card=column();card.setTag(j.id);card.setPadding(dp(12),dp(8),dp(12),dp(8));card.setBackground(glass(15,0xff343c64));
             TextView title=label(j.name,15,TEXT);title.setMaxLines(2);card.addView(title);
-            long bytes=j.bytes,total=j.total;String amount=android.text.format.Formatter.formatFileSize(this,bytes);String status=j.status;
-            boolean busy=j.busy();int percent=total>0?(int)Math.min(100,100.0*bytes/total):0;
-            add(card,label(busy?status+" • "+amount+(total>0?" / "+android.text.format.Formatter.formatFileSize(this,total)+" • "+percent+"%":""):status,12,busy?CYAN:MUTED),-1,-2);
-            if(busy){ProgressBar bar=new ProgressBar(this,null,android.R.attr.progressBarStyleHorizontal);bar.setIndeterminate(total<=0);bar.setMax(100);if(total>0)bar.setProgress(percent);bar.setProgressTintList(android.content.res.ColorStateList.valueOf(CYAN));add(card,bar,-1,8);add(card,button("Отменить","Отменить скачивание",()->transfers.cancel(j)),-1,44);}else add(card,button("Убрать","Убрать сообщение",()->{transfers.dismiss(j);renderDownloadJobs(c);}),-1,44);
-            add(c,card,-1,-2);
+            detail=label("",12,CYAN);add(card,detail,-1,-2);
+            bar=new ProgressBar(MainActivity.this,null,android.R.attr.progressBarStyleHorizontal);bar.setMax(100);bar.setProgressTintList(android.content.res.ColorStateList.valueOf(CYAN));add(card,bar,-1,8);
+            LinearLayout actions=row();
+            pause=button("Пауза","Пауза или продолжение",()->{transfers.setPaused(job,!job.paused);update();});
+            cancel=button("Отменить","Отменить или убрать загрузку",()->{if(job.done)transfers.dismiss(job);else transfers.cancel(job);update();});
+            actions.addView(pause,new LinearLayout.LayoutParams(0,dp(44),1));actions.addView(cancel,new LinearLayout.LayoutParams(0,dp(44),1));card.addView(actions);
+            update();
         }
+        void update(){
+            boolean busy=job.busy();long bytes=job.bytes,total=job.total,speed=job.speed;
+            int percent=total>0?(int)Math.min(100,100.0*bytes/total):0;
+            String text=job.status+" • "+android.text.format.Formatter.formatFileSize(MainActivity.this,bytes);
+            if(total>0)text+=" / "+android.text.format.Formatter.formatFileSize(MainActivity.this,total)+" • "+percent+"%";
+            if(busy&&!job.paused&&!job.cancelled&&!job.committing&&speed>0){
+                text+=" • "+android.text.format.Formatter.formatFileSize(MainActivity.this,speed)+"/с";
+                if(total>bytes){long seconds=(total-bytes)/speed;text+=" • ≈ "+(seconds/60)+" мин "+(seconds%60)+" с";}
+            }
+            if(!android.text.TextUtils.equals(detail.getText(),text))detail.setText(text);
+            detail.setTextColor(busy?CYAN:MUTED);bar.setVisibility(busy?View.VISIBLE:View.GONE);
+            boolean indeterminate=busy&&job.scheduled&&!job.paused&&!job.cancelled&&total<=0;
+            if(bar.isIndeterminate()!=indeterminate)bar.setIndeterminate(indeterminate);
+            if(!indeterminate&&bar.getProgress()!=percent)bar.setProgress(percent);
+            pause.setVisibility(busy?View.VISIBLE:View.GONE);pause.setEnabled(job.canPause());
+            pause.setText(job.paused?"Продолжить":"Пауза");
+            cancel.setText(busy?"Отменить":"Убрать");cancel.setEnabled(!busy||(!job.cancelled&&!job.committing));
+        }
+    }
+    private void renderDownloadJobs(LinearLayout c){
+        List<FileTransfers.Job> jobs=transfers.jobs();
+        @SuppressWarnings("unchecked") Map<String,DownloadCard> cards=(Map<String,DownloadCard>)c.getTag();
+        if(cards==null){cards=new LinkedHashMap<>();c.setTag(cards);}
+        List<String> ids=new ArrayList<>();for(FileTransfers.Job j:jobs)ids.add(j.id);
+        if(!new ArrayList<>(cards.keySet()).equals(ids)||c.getChildCount()==0){
+            Map<String,DownloadCard> next=new LinkedHashMap<>();c.removeAllViews();
+            for(FileTransfers.Job j:jobs){DownloadCard card=cards.get(j.id);if(card==null)card=new DownloadCard(j);next.put(j.id,card);add(c,card.card,-1,-2);}
+            c.setTag(next);cards=next;
+            if(jobs.isEmpty())add(c,label("Нет активных загрузок",13,MUTED),-1,40);
+        }
+        for(DownloadCard card:cards.values())card.update();
     }
     private void renderDownloaded(LinearLayout c,String query){
         c.removeAllViews();String q=query.trim().toLowerCase(Locale.ROOT);int count=0;
@@ -786,7 +830,7 @@ public class MainActivity extends Activity {
     @Override protected void onStop(){if(videoSuspend)for(Tab t:tabs){if(t.session!=null&&t.session.isOpen()&&t.webActive){t.session.setActive(false);extensions.setTabActive(t.session,false);t.webActive=false;}}super.onStop();}
     @Override protected void onStart(){super.onStart();if(prefs!=null)applyVideoPower();if(!tabs.isEmpty()){Tab t=current();if(!t.home&&t.session!=null&&t.session.isOpen()&&!t.webActive){t.session.setActive(true);extensions.setTabActive(t.session,true);t.webActive=true;}}}
     private void menu(){
-        LinearLayout c=panel("AetherBolt","0.8.5 DevSuite • Быстрый доступ",true);
+        LinearLayout c=panel("AetherBolt","0.8.6 DevSuite • Быстрый доступ",true);
         grid(c,new String[]{"Новая вкладка","Вкладки","Вперёд","Закладка","История","Загрузки","Расширения","DevSuite","VPN","Защита","Настройки","Закладки"},new String[]{"+","▣","›","☆","◷","↓","✧",">_","◈","◈","⚙","☆"},new int[]{CYAN,PURPLE},new Runnable[]{()->addTab(),()->tabDialog(),()->{dismissPanel();if(!current().home&&current().session!=null&&current().canForward)current().session.goForward();},()->saveBookmark(),()->listDialog("История",history,"history"),()->downloadPanel(),()->quickAddons(),()->devSuitePanel(),()->vpnPanel(),()->privacy(),()->settings(),()->listDialog("Закладки",bookmarks,"bookmarks")},3);
     }
 
@@ -803,7 +847,7 @@ public class MainActivity extends Activity {
     private void startVpn(){vpn.change(true,this::vpnDone);}
     private void vpnDone(String err){runOnUiThread(()->{if(isFinishing()||isDestroyed())return;if(err!=null)notice("VPN",err);else vpnPanel();});}
 
-    private void settings(){LinearLayout c=panel("Настройки","Управление AetherBolt Browser",false);section(c,"ПЕРСОНАЛИЗАЦИЯ");item(c,"⌕","Поисковая система",engineName,"›",()->engineDialog());item(c,"◎","Язык результатов",searchLanguageName()+" • "+SearchLanguage.support(engineTemplate),"›",()->searchLanguages());item(c,"✧","Внешний вид",appearance,"›",()->themes());item(c,"▣","Настройки сайтов","JavaScript, изображения, ПК, масштаб, медиа","›",()->webOptions());section(c,"ПРОИЗВОДИТЕЛЬНОСТЬ");item(c,"◎","Performance Center","Профили • память • батарея • трафик • вкладки","›",this::performanceCenter);item(c,"▶","Видео и производительность","Настройка нагрузки на планшет • диагностика","›",this::videoSettings);section(c,"БЕЗОПАСНОСТЬ И МОДУЛИ");item(c,">_","DevSuite","Eruda • xterm • CyberChef • Linux • прокси","›",()->devSuitePanel());item(c,"◈","VPN • WireGuard",vpn.active()?"Туннель включён":"Отключён","›",()->vpnPanel());item(c,"◈","Конфиденциальность","Cookies, история, реклама и трекеры","›",()->privacy());item(c,"◈","AdBlock Pro","uBlock Origin • управление фильтрами","›",this::adBlockPanel);item(c,"◎","DNS Manager","Системный DNS / DNS-over-HTTPS","›",this::dnsPanel);item(c,"✧","Расширения и скрипты","GeckoView • XPI / JS","›",()->addonManage());item(c,"◎","Tor Engine","Встроенный клиент • текстовый просмотр .onion","›",()->openTor(""));section(c,"ФАЙЛЫ И ДАННЫЕ");item(c,"↓","Загрузки","Менеджер файлов","›",()->downloadPanel());item(c,"×","Очистить данные","История и данные сайтов","›",()->clearData());section(c,"О ПРИЛОЖЕНИИ");item(c,"↻","Обновление браузера","Локальный дельта-патч .aeb","›",()->updatePanel());item(c,"⚡","AetherBolt Browser","0.8.5 Alpha • GeckoView 161","›",()->notice("AetherBolt","Beyond the Limits. GeckoView • XPI. Tor Engine — экспериментальный текстовый просмотр; не полноценный Tor Browser."));}
+    private void settings(){LinearLayout c=panel("Настройки","Управление AetherBolt Browser",false);section(c,"ПЕРСОНАЛИЗАЦИЯ");item(c,"⌕","Поисковая система",engineName,"›",()->engineDialog());item(c,"◎","Язык результатов",searchLanguageName()+" • "+SearchLanguage.support(engineTemplate),"›",()->searchLanguages());item(c,"✧","Внешний вид",appearance,"›",()->themes());item(c,"▣","Настройки сайтов","JavaScript, изображения, ПК, масштаб, медиа","›",()->webOptions());section(c,"ПРОИЗВОДИТЕЛЬНОСТЬ");item(c,"◎","Performance Center","Профили • память • батарея • трафик • вкладки","›",this::performanceCenter);item(c,"▶","Видео и производительность","Настройка нагрузки на планшет • диагностика","›",this::videoSettings);section(c,"БЕЗОПАСНОСТЬ И МОДУЛИ");item(c,">_","DevSuite","Eruda • xterm • CyberChef • Linux • прокси","›",()->devSuitePanel());item(c,"◈","VPN • WireGuard",vpn.active()?"Туннель включён":"Отключён","›",()->vpnPanel());item(c,"◈","Конфиденциальность","Cookies, история, реклама и трекеры","›",()->privacy());item(c,"◈","AdBlock Pro","uBlock Origin • управление фильтрами","›",this::adBlockPanel);item(c,"◎","DNS Manager","Системный DNS / DNS-over-HTTPS","›",this::dnsPanel);item(c,"✧","Расширения и скрипты","GeckoView • XPI / JS","›",()->addonManage());item(c,"◎","Tor Engine","Встроенный клиент • текстовый просмотр .onion","›",()->openTor(""));section(c,"ФАЙЛЫ И ДАННЫЕ");item(c,"↓","Загрузки","Менеджер файлов","›",()->downloadPanel());item(c,"⚙","Download Accelerator","Очередь и число параллельных скачиваний","›",this::downloadSettings);item(c,"×","Очистить данные","История и данные сайтов","›",()->clearData());section(c,"О ПРИЛОЖЕНИИ");item(c,"↻","Обновление браузера","Локальный дельта-патч .aeb","›",()->updatePanel());item(c,"⚡","AetherBolt Browser","0.8.6 Alpha • GeckoView 161","›",()->notice("AetherBolt","Beyond the Limits. GeckoView • XPI. Tor Engine — экспериментальный текстовый просмотр; не полноценный Tor Browser."));}
     private void clearData(){history.clear();closedPages.clear();for(Tab t:tabs)t.preview=null;prefs.edit().remove("workspaceTabs").remove("workspaceActive").apply();writeList("history",history);notice("История очищена","Данные сайтов Gecko не удалены; отдельный механизм ещё не перенесён.");}
 
     private void readList(String key,ArrayList<String> out){try{JSONArray a=new JSONArray(prefs.getString(key,"[]"));for(int i=0;i<a.length();i++)out.add(a.getString(i));}catch(JSONException ignored){}}
