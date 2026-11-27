@@ -63,7 +63,7 @@ public final class MediaCenterActivity extends Activity {
         root.addView(controls,new FrameLayout.LayoutParams(-1,-2,Gravity.BOTTOM));
         setContentView(root);immersive();
         Uri supplied=getIntent().getData();if(supplied!=null&&"content".equals(supplied.getScheme()))open(supplied,getIntent().getStringExtra("title"));else pick();
-        videoPower.apply(getWindow(),getSharedPreferences("aetherbolt",MODE_PRIVATE).getBoolean("videoEco",true));
+        videoPower.apply(getWindow(),getSharedPreferences("aetherbolt",MODE_PRIVATE).getBoolean("videoEco",true)||getSharedPreferences("aetherbolt",MODE_PRIVATE).getBoolean("videoAllPages",false));
     }
     private LinearLayout row(){LinearLayout r=new LinearLayout(this);r.setGravity(Gravity.CENTER_VERTICAL);r.setOrientation(LinearLayout.HORIZONTAL);return r;}
     private TextView text(String s,int size){TextView t=new TextView(this);t.setText(s);t.setTextSize(size);t.setTextColor(TEXT);t.setGravity(Gravity.CENTER_VERTICAL);return t;}
@@ -87,7 +87,7 @@ public final class MediaCenterActivity extends Activity {
                 case MediaPlayer.Event.EncounteredError:play.setText("▶");status.setText("Ошибка декодирования. Попробуйте другой проигрыватель.");showControls(true);break;
                 default:break;
             }}));
-            Media media=new Media(lib,file.getFileDescriptor());try{media.setHWDecoderEnabled(true,false);player.setMedia(media);}finally{media.release();}
+            Media media=new Media(lib,file.getFileDescriptor());try{media.setHWDecoderEnabled(true,getSharedPreferences("aetherbolt",MODE_PRIVATE).getBoolean("videoHwPriority",false));player.setMedia(media);}finally{media.release();}
             player.play();
         }catch(Exception|LinkageError e){releasePlayer();status.setText("Ошибка открытия: "+e.getMessage());}
     }

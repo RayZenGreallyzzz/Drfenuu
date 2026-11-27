@@ -28,12 +28,12 @@ public class MainActivity extends Activity {
     private int previousSystemUi;
     private int previousBarsBehavior;
     private boolean fullscreenUi=false;
-    private boolean videoEco=true;
+    private boolean videoEco=true,videoAllPages=false,videoSuspend=true;
     private final VideoPowerPolicy videoPower=new VideoPowerPolicy();
     private void setFullscreenUi(boolean enabled){
         if(fullscreenUi==enabled)return;
         fullscreenUi=enabled;
-        videoPower.apply(getWindow(),enabled&&videoEco);
+        applyVideoPower();
         Window window=getWindow();
         View decor=window.getDecorView();
         if(enabled){
@@ -204,7 +204,7 @@ public class MainActivity extends Activity {
         String[] names={"Google","DuckDuckGo","Bing","Brave Search","Qwant","Яндекс","Ahmia","Добавить"};String[] icons={"G","D","b","B","Q","Я","◎","+"};int[] colors={0xff79aaff,0xffff9c50,CYAN,0xffff855d,PURPLE,0xffff7d8a,0xffc69cff,TEXT};Runnable[] actions=new Runnable[8];for(int i=0;i<6;i++){final int n=i;actions[i]=()->setEngine(Router.ENGINES[n][0],Router.ENGINES[n][1]);}actions[6]=()->setEngine(Router.ENGINES[10][0],Router.ENGINES[10][1]);actions[7]=()->customEngine();
         int cols=getResources().getConfiguration().screenWidthDp>=720?8:4;grid(box,names,icons,colors,actions,cols);
         grid(box,new String[]{"Дополнения","Загрузки","Закладки","История","Настройки","Вкладки"},new String[]{"✧","↓","☆","◷","⚙","▣"},new int[]{PURPLE,CYAN},new Runnable[]{()->quickAddons(),()->downloadPanel(),()->listDialog("Закладки",bookmarks,"bookmarks"),()->listDialog("История",history,"history"),()->settings(),()->tabDialog()},getResources().getConfiguration().screenWidthDp>=650?6:3);
-        TextView note=label("GECKO ALPHA 0.8.1   •   Tor пока недоступен",11,MUTED);note.setGravity(Gravity.CENTER);add(box,note,-1,28);return sc;
+        TextView note=label("GECKO ALPHA 0.8.2   •   Tor пока недоступен",11,MUTED);note.setGravity(Gravity.CENTER);add(box,note,-1,28);return sc;
     }
 
     private android.graphics.drawable.Drawable ripple(int color,int radius,int stroke){return new android.graphics.drawable.RippleDrawable(android.content.res.ColorStateList.valueOf(0x337f8cff),shape(color,radius,stroke),null);}
@@ -247,9 +247,9 @@ public class MainActivity extends Activity {
     private EditText field(String hint){EditText e=new EditText(this);e.setSingleLine(true);e.setTextColor(TEXT);e.setHintTextColor(MUTED);e.setTextSize(15);e.setHint(hint);e.setPadding(dp(14),dp(10),dp(14),dp(10));e.setBackground(shape(PANEL,15,0xff6552a3));return e;}
 
 
-    private void loadOptions(){videoEco=prefs.getBoolean("videoEco",true);js=prefs.getBoolean("js",true);images=prefs.getBoolean("images",true);desktop=prefs.getBoolean("desktop",false);historyEnabled=prefs.getBoolean("historyEnabled",true);thirdParty=prefs.getBoolean("thirdParty",false);autoplay=prefs.getBoolean("autoplay",false);darkPages=prefs.getBoolean("darkPages",false);zoom=prefs.getBoolean("zoom",true);tracker=prefs.getBoolean("tracker",true);appearance=prefs.getString("appearance","Космос");}
+    private void loadOptions(){videoEco=prefs.getBoolean("videoEco",true);videoAllPages=prefs.getBoolean("videoAllPages",false);videoSuspend=prefs.getBoolean("videoSuspend",videoEco);js=prefs.getBoolean("js",true);images=prefs.getBoolean("images",true);desktop=prefs.getBoolean("desktop",false);historyEnabled=prefs.getBoolean("historyEnabled",true);thirdParty=prefs.getBoolean("thirdParty",false);autoplay=prefs.getBoolean("autoplay",false);darkPages=prefs.getBoolean("darkPages",false);zoom=prefs.getBoolean("zoom",true);tracker=prefs.getBoolean("tracker",true);appearance=prefs.getString("appearance","Космос");}
     private int themeBg(){return appearance.equals("AMOLED")?0xff000000:appearance.equals("Графит")?0xff171a23:BG;}
-    private void applyOptions(Tab t){if(t.session==null)return;t.session.getSettings().setSuspendMediaWhenInactive(videoEco);t.session.getSettings().setUseTrackingProtection(tracker);t.session.getSettings().setUserAgentMode(desktop?GeckoSessionSettings.USER_AGENT_MODE_DESKTOP:GeckoSessionSettings.USER_AGENT_MODE_MOBILE);}
+    private void applyOptions(Tab t){if(t.session==null)return;t.session.getSettings().setSuspendMediaWhenInactive(videoSuspend);t.session.getSettings().setUseTrackingProtection(tracker);t.session.getSettings().setUserAgentMode(desktop?GeckoSessionSettings.USER_AGENT_MODE_DESKTOP:GeckoSessionSettings.USER_AGENT_MODE_MOBILE);}
 
     private void toggle(String key,boolean value,Runnable reopen){prefs.edit().putBoolean(key,value).apply();loadOptions();applyProtection();for(Tab t:tabs)applyOptions(t);reopen.run();}
 
@@ -310,7 +310,48 @@ public class MainActivity extends Activity {
 
     private void privacy(){LinearLayout c=panel("Конфиденциальность","Gecko Edition",false);option(c,"◈","Блокировать известные трекеры","Gecko: списки трекеров и cookies","tracker",tracker,()->privacy());option(c,"◷","Сохранять историю","История и восстановление вкладок","historyEnabled",historyEnabled,()->{if(!historyEnabled)saveTabs();privacy();});item(c,"×","Очистить историю","История AetherBolt","›",()->clearData());item(c,"◎","Tor","Не реализован","›",()->notice("Tor","Нет интеграции Tor. Не используй для анонимности."));}
 
-    private void webOptions(){LinearLayout c=panel("Настройки сайтов","Gecko Edition",false);option(c,"▶","Экономия при видео","60 Гц в полноэкранном режиме, пауза медиа неактивных вкладок","videoEco",videoEco,()->{videoPower.apply(getWindow(),fullscreenUi&&videoEco);webOptions();});item(c,"▶","Качество видео","Если планшет шумит, выберите 720p или 1080p и 30 FPS в меню самого сайта. AetherBolt не меняет качество без согласия.","",()->{});option(c,"▣","Версия для ПК","User-Agent","desktop",desktop,()->webOptions());item(c,"↻","Обновить страницу","","›",()->{dismissPanel();if(!current().home&&current().session!=null)current().session.reload();});}
+    private void applyVideoPower(){videoPower.apply(getWindow(),videoAllPages||(fullscreenUi&&videoEco));}
+    private void videoOption(LinearLayout c,String title,String sub,String key,boolean checked){
+        item(c,"▶",title,sub,checked?"● Вкл":"○ Выкл",()->{
+            prefs.edit().putBoolean(key,!checked).apply();loadOptions();applyVideoPower();
+            for(Tab t:tabs)if(t.session!=null)t.session.getSettings().setSuspendMediaWhenInactive(videoSuspend);
+            videoSettings();
+        });
+    }
+    private void videoSettings(){
+        LinearLayout c=panel("Видео и производительность","AetherBolt • настройки устройства",false);
+        section(c,"ЭКРАН");
+        videoOption(c,"60 Гц при полноэкранном видео","Запрос частоты 60 Гц без изменения разрешения; зависит от Android","videoEco",videoEco);
+        videoOption(c,"60 Гц во всём браузере","Для видео внутри страницы и обычного просмотра; меньше плавность на экранах 90/120 Гц","videoAllPages",videoAllPages);
+        section(c,"ФОНОВАЯ НАГРУЗКА");
+        videoOption(c,"Приостанавливать медиа в фоне","Скрытые вкладки и браузер в фоне; может остановить фоновое аудио","videoSuspend",videoSuspend);
+        section(c,"ЛОКАЛЬНЫЙ МЕДИАЦЕНТР");
+        videoOption(c,"Приоритет аппаратного декодера","LibVLC: усиленный приоритет HW для файлов; при проблемах выключите. GeckoView управляет своим декодером самостоятельно.","videoHwPriority",prefs.getBoolean("videoHwPriority",false));
+        section(c,"ДИАГНОСТИКА");
+        item(c,"◎","Устройство и видеодекодеры","H.264 / HEVC / VP9 / AV1 • проверка Android MediaCodec","›",this::videoDiagnostics);
+        item(c,"↻","Сброс настроек видео","60 Гц в полноэкранном режиме, приостановка фона, стандартный HW-режим","›",()->{
+            prefs.edit().putBoolean("videoEco",true).putBoolean("videoAllPages",false).putBoolean("videoSuspend",true).putBoolean("videoHwPriority",false).apply();
+            loadOptions();applyVideoPower();for(Tab t:tabs)if(t.session!=null)t.session.getSettings().setSuspendMediaWhenInactive(videoSuspend);videoSettings();
+        });
+        section(c,"РЕКОМЕНДАЦИИ");
+        item(c,"▶","Качество видео на сайте","Если есть писк, сравните 720p/1080p при 30 FPS. Качество выбирается в плеере сайта. Ограничение частоты экрана не ограничивает частоту кадров видео.","",()->{});
+        item(c,"◎","Приватность","Режимы производительности не изменяют настройки истории, cookies или защиты от отслеживания.","",()->{});
+    }
+    private boolean videoDiagnosticsBusy;
+    private void videoDiagnostics(){
+        if(videoDiagnosticsBusy){toast("Проверка уже выполняется");return;}
+        videoDiagnosticsBusy=true;toast("Проверка видеодекодеров…");
+        final String display=VideoDiagnostics.displayInfo(getWindow().getDecorView().getDisplay());
+        new Thread(()->{
+            android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND);
+            String report=VideoDiagnostics.report(display);
+            runOnUiThread(()->{
+                videoDiagnosticsBusy=false;
+                if(!isDestroyed()&&!isFinishing())notice("Диагностика видео",report);
+            });
+        },"aether-video-diagnostics").start();
+    }
+    private void webOptions(){LinearLayout c=panel("Настройки сайтов","Gecko Edition",false);item(c,"▶","Видео и производительность","Частота экрана, фоновые вкладки и диагностика кодеков","›",this::videoSettings);option(c,"▣","Версия для ПК","User-Agent","desktop",desktop,()->webOptions());item(c,"↻","Обновить страницу","","›",()->{dismissPanel();if(!current().home&&current().session!=null)current().session.reload();});}
 
     private void themes(){LinearLayout c=panel("Внешний вид","Фирменные варианты оформления",false);for(String theme:new String[]{"Космос","AMOLED","Графит"})item(c,"✧",theme,theme.equals("Космос")?"Планета и неоновые линии":theme.equals("AMOLED")?"Чёрный фон стартовой страницы":"Спокойный тёмный фон",appearance.equals(theme)?"●":"○",()->{appearance=theme;prefs.edit().putString("appearance",theme).apply();root.setBackgroundColor(themeBg());showTab();});}
     private void requestDownload(String url,String ua,String disposition,String mime){notice("Загрузка","Старый механизм загрузки не используется.");}
@@ -591,10 +632,10 @@ public class MainActivity extends Activity {
         runtime.getSettings().getContentBlocking().setCookieBehavior(tracker?ContentBlocking.CookieBehavior.ACCEPT_NON_TRACKERS:ContentBlocking.CookieBehavior.ACCEPT_ALL);
     }
     @Override protected void onPause(){if(!tabs.isEmpty())saveTabs();super.onPause();}
-    @Override protected void onStop(){if(videoEco)for(Tab t:tabs){if(t.session!=null&&t.session.isOpen()&&t.webActive){t.session.setActive(false);extensions.setTabActive(t.session,false);t.webActive=false;}}super.onStop();}
-    @Override protected void onStart(){super.onStart();if(!tabs.isEmpty()){Tab t=current();if(!t.home&&t.session!=null&&t.session.isOpen()&&!t.webActive){t.session.setActive(true);extensions.setTabActive(t.session,true);t.webActive=true;}}}
+    @Override protected void onStop(){if(videoSuspend)for(Tab t:tabs){if(t.session!=null&&t.session.isOpen()&&t.webActive){t.session.setActive(false);extensions.setTabActive(t.session,false);t.webActive=false;}}super.onStop();}
+    @Override protected void onStart(){super.onStart();if(prefs!=null)applyVideoPower();if(!tabs.isEmpty()){Tab t=current();if(!t.home&&t.session!=null&&t.session.isOpen()&&!t.webActive){t.session.setActive(true);extensions.setTabActive(t.session,true);t.webActive=true;}}}
     private void menu(){
-        LinearLayout c=panel("AetherBolt","0.8.1 DevSuite • Быстрый доступ",true);
+        LinearLayout c=panel("AetherBolt","0.8.2 DevSuite • Быстрый доступ",true);
         grid(c,new String[]{"Новая вкладка","Вкладки","Вперёд","Закладка","История","Загрузки","Расширения","DevSuite","VPN","Защита","Настройки","Закладки"},new String[]{"+","▣","›","☆","◷","↓","✧",">_","◈","◈","⚙","☆"},new int[]{CYAN,PURPLE},new Runnable[]{()->addTab(),()->tabDialog(),()->{dismissPanel();if(!current().home&&current().session!=null&&current().canForward)current().session.goForward();},()->saveBookmark(),()->listDialog("История",history,"history"),()->downloadPanel(),()->quickAddons(),()->devSuitePanel(),()->vpnPanel(),()->privacy(),()->settings(),()->listDialog("Закладки",bookmarks,"bookmarks")},3);
     }
 
@@ -611,7 +652,7 @@ public class MainActivity extends Activity {
     private void startVpn(){vpn.change(true,this::vpnDone);}
     private void vpnDone(String err){runOnUiThread(()->{if(isFinishing()||isDestroyed())return;if(err!=null)notice("VPN",err);else vpnPanel();});}
 
-    private void settings(){LinearLayout c=panel("Настройки","Управление AetherBolt Browser",false);section(c,"ПЕРСОНАЛИЗАЦИЯ");item(c,"⌕","Поисковая система",engineName,"›",()->engineDialog());item(c,"◎","Язык результатов",searchLanguageName()+" • "+SearchLanguage.support(engineTemplate),"›",()->searchLanguages());item(c,"✧","Внешний вид",appearance,"›",()->themes());item(c,"▣","Настройки сайтов","JavaScript, изображения, ПК, масштаб, медиа","›",()->webOptions());section(c,"БЕЗОПАСНОСТЬ И МОДУЛИ");item(c,">_","DevSuite","Eruda • xterm • CyberChef • Linux • прокси","›",()->devSuitePanel());item(c,"◈","VPN • WireGuard",vpn.active()?"Туннель включён":"Отключён","›",()->vpnPanel());item(c,"◈","Конфиденциальность","Cookies, история, реклама и трекеры","›",()->privacy());item(c,"✧","Расширения и скрипты","GeckoView • XPI / JS","›",()->addonManage());item(c,"◎","Сеть Tor","Не реализована","›",()->notice("Tor","Поддержка .onion пока не реализована."));section(c,"ФАЙЛЫ И ДАННЫЕ");item(c,"↓","Загрузки","Менеджер файлов","›",()->downloadPanel());item(c,"×","Очистить данные","История и данные сайтов","›",()->clearData());section(c,"О ПРИЛОЖЕНИИ");item(c,"↻","Обновление браузера","Локальный дельта-патч .aeb","›",()->updatePanel());item(c,"⚡","AetherBolt Browser","0.8.1 Alpha • GeckoView 161","›",()->notice("AetherBolt","Beyond the Limits. GeckoView • XPI. Tor и перенос пользовательских скриптов ещё не завершены."));}
+    private void settings(){LinearLayout c=panel("Настройки","Управление AetherBolt Browser",false);section(c,"ПЕРСОНАЛИЗАЦИЯ");item(c,"⌕","Поисковая система",engineName,"›",()->engineDialog());item(c,"◎","Язык результатов",searchLanguageName()+" • "+SearchLanguage.support(engineTemplate),"›",()->searchLanguages());item(c,"✧","Внешний вид",appearance,"›",()->themes());item(c,"▣","Настройки сайтов","JavaScript, изображения, ПК, масштаб, медиа","›",()->webOptions());section(c,"ПРОИЗВОДИТЕЛЬНОСТЬ");item(c,"▶","Видео и производительность","Настройка нагрузки на планшет • диагностика","›",this::videoSettings);section(c,"БЕЗОПАСНОСТЬ И МОДУЛИ");item(c,">_","DevSuite","Eruda • xterm • CyberChef • Linux • прокси","›",()->devSuitePanel());item(c,"◈","VPN • WireGuard",vpn.active()?"Туннель включён":"Отключён","›",()->vpnPanel());item(c,"◈","Конфиденциальность","Cookies, история, реклама и трекеры","›",()->privacy());item(c,"✧","Расширения и скрипты","GeckoView • XPI / JS","›",()->addonManage());item(c,"◎","Сеть Tor","Не реализована","›",()->notice("Tor","Поддержка .onion пока не реализована."));section(c,"ФАЙЛЫ И ДАННЫЕ");item(c,"↓","Загрузки","Менеджер файлов","›",()->downloadPanel());item(c,"×","Очистить данные","История и данные сайтов","›",()->clearData());section(c,"О ПРИЛОЖЕНИИ");item(c,"↻","Обновление браузера","Локальный дельта-патч .aeb","›",()->updatePanel());item(c,"⚡","AetherBolt Browser","0.8.2 Alpha • GeckoView 161","›",()->notice("AetherBolt","Beyond the Limits. GeckoView • XPI. Tor и перенос пользовательских скриптов ещё не завершены."));}
     private void clearData(){history.clear();closedPages.clear();for(Tab t:tabs)t.preview=null;prefs.edit().remove("workspaceTabs").remove("workspaceActive").apply();writeList("history",history);notice("История очищена","Данные сайтов Gecko не удалены; отдельный механизм ещё не перенесён.");}
 
     private void readList(String key,ArrayList<String> out){try{JSONArray a=new JSONArray(prefs.getString(key,"[]"));for(int i=0;i<a.length();i++)out.add(a.getString(i));}catch(JSONException ignored){}}
