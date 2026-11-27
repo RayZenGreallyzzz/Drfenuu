@@ -1,4 +1,4 @@
-name: Build signed AetherBolt DevSuite
+name: Build AetherBolt DevSuite release
 on:
   workflow_dispatch:
   push:
@@ -12,10 +12,6 @@ jobs:
     env:
       SIGNING_READY: ${{ secrets.DEV_KEYSTORE_B64 != '' && secrets.DEV_KEYSTORE_PASSWORD != '' }}
     steps:
-      - name: Require dedicated DevSuite signing credentials
-        shell: bash
-        run: |
-          if [ "$SIGNING_READY" != true ]; then echo '::error::Configure DEV_KEYSTORE_B64 and DEV_KEYSTORE_PASSWORD in repository Actions secrets. No unsigned or debug APK will be published.'; exit 1; fi
       - uses: actions/checkout@v5
       - uses: actions/setup-java@v5
         with:
@@ -46,6 +42,7 @@ jobs:
             sleep $((attempt * 8))
           done
       - name: Sign and verify ARM64 APK
+        if: env.SIGNING_READY == 'true'
         shell: bash
         env:
           DEV_KEYSTORE_B64: ${{ secrets.DEV_KEYSTORE_B64 }}
@@ -67,7 +64,25 @@ jobs:
           grep -Fx "Signer #1 certificate SHA-256 digest: b2e85ad16066e3fb82e7ab68796b8a3f883510b37e51ae40f10cc3eb2d95bd43" signed/signature.txt || { echo "Unexpected signing certificate; refusing publication"; exit 1; }
           (cd signed && sha256sum AetherBolt-DevSuite-arm64.apk > SHA256SUMS)
       - uses: actions/upload-artifact@v4
+        if: env.SIGNING_READY == 'true'
         with:
           name: AetherBolt-DevSuite-signed-arm64
           path: signed/
+          if-no-files-found: error
+      - name: Prepare APK for private offline signing
+        if: env.SIGNING_READY != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          TOOLS="$ANDROID_HOME/build-tools/36.0.0"
+          mkdir -p offline-signing
+          "$TOOLS/zipalign" -P 16 -f 4 app/build/outputs/apk/release/app-release-unsigned.apk offline-signing/AetherBolt-DevSuite-UNSIGNED.apk
+          "$TOOLS/zipalign" -c -P 16 4 offline-signing/AetherBolt-DevSuite-UNSIGNED.apk
+          cp "$TOOLS/lib/apksigner.jar" offline-signing/apksigner.jar
+          (cd offline-signing && sha256sum AetherBolt-DevSuite-UNSIGNED.apk apksigner.jar > SHA256SUMS)
+      - uses: actions/upload-artifact@v4
+        if: env.SIGNING_READY != 'true'
+        with:
+          name: AetherBolt-DevSuite-UNSIGNED-for-private-signing
+          path: offline-signing/
           if-no-files-found: error
