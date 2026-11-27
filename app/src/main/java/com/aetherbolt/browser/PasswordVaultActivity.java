@@ -39,7 +39,7 @@ public final class PasswordVaultActivity extends Activity {
     }
     private void lockedView(){
         if(body==null)return;body.removeAllViews();
-        body.addView(text("Локальное хранилище AES-256-GCM. Для доступа требуется защищённая блокировка Android. Нет синхронизации, автозаполнения и восстановления ключа. Если ключ будет утрачен, записи восстановить нельзя.",14));
+        body.addView(text("Локальное хранилище AES-256-GCM. Для доступа требуется защищённая блокировка Android. Браузер может сохранять логины HTTPS и автозаполнять их после отдельной разблокировки. Нет синхронизации и восстановления ключа. Если ключ будет утрачен, записи восстановить нельзя.",14));
         button(body,"Разблокировать",this::beginAuth);button(body,"Закрыть",this::finish);
     }
     private void lock(String message){

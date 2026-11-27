@@ -124,6 +124,8 @@ final class FileTransfers {
     private void toast(String s){ui.runOnUiThread(()->{if(!ui.isDestroyed())Toast.makeText(ui,s,Toast.LENGTH_LONG).show();});}
     GeckoSession.PromptDelegate promptDelegate(){
         return new GeckoSession.PromptDelegate(){
+            @Override public GeckoResult<PromptResponse> onLoginSave(GeckoSession session,AutocompleteRequest<org.mozilla.geckoview.Autocomplete.LoginSaveOption> request){BrowserPasswords p=ui.browserPasswords();return p==null?GeckoResult.fromValue(request.dismiss()):p.save(session,request);}
+            @Override public GeckoResult<PromptResponse> onLoginSelect(GeckoSession session,AutocompleteRequest<org.mozilla.geckoview.Autocomplete.LoginSelectOption> request){BrowserPasswords p=ui.browserPasswords();return p==null?GeckoResult.fromValue(request.dismiss()):p.select(session,request);}
             @Override public GeckoResult<PromptResponse> onFilePrompt(GeckoSession session,FilePrompt prompt){
                 if(pickerOpen||ui.isFinishing()||ui.isDestroyed())return GeckoResult.fromValue(prompt.dismiss());
                 if(prompt.type==FilePrompt.Type.FOLDER){toast("Выбор папки пока не поддерживается. Выберите отдельные файлы.");return GeckoResult.fromValue(prompt.dismiss());}
