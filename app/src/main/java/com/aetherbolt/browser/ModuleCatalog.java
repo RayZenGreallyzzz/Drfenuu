@@ -7,6 +7,7 @@ import android.widget.Toast;
 /** Availability gates for optional local tools, not a network security switch. */
 final class ModuleCatalog {
     static final String[][] LOCAL={
+        {"ai","AI Center","ChatGPT Web • совместимый сервер"},
         {"offline","Offline Browser","Текстовые снимки • локальная библиотека"},
         {"vault","Password Vault","Android Keystore • локальное хранилище"},
         {"media","Media Center Pro","LibVLC • локальное видео и аудио"},
