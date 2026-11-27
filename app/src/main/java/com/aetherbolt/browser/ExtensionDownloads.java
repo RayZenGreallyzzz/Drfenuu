@@ -38,7 +38,7 @@ final class ExtensionDownloads implements WebExtension.DownloadDelegate {
     @Override public GeckoResult<WebExtension.DownloadInitData> onDownload(WebExtension source,WebExtension.DownloadRequest request){
         GeckoResult<WebExtension.DownloadInitData> result=new GeckoResult<>();
         ui.runOnUiThread(()->{
-            if(destroyed||ui.isFinishing()||ui.isDestroyed()||!ui.hasWindowFocus()){reject(result,"Браузер неактивен. Повторите загрузку из расширения.");return;}
+            if(destroyed||!ui.canPromptExtensionDownload()){reject(result,"Браузер неактивен. Повторите загрузку из расширения.");return;}
             if(pending>=MAX_DIALOGS||transfers.activeCount()>=12){reject(result,"Занята очередь загрузок.");return;}
             if(source==null||source.metaData==null||!source.metaData.enabled||request==null||request.request==null){reject(result,"Расширение или запрос недоступны.");return;}
             String target=request.request.uri;

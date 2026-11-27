@@ -100,6 +100,7 @@ public class MainActivity extends Activity {
     private DevSuiteFeature devSuite;
     private FileTransfers transfers;
     private ExtensionDownloads extensionDownloads;
+    private boolean browserForeground;
     private BrowserPasswords passwords;
     private final Set<Tab> capturing=Collections.newSetFromMap(new IdentityHashMap<>());
     private final Map<Tab,TextView> tabTitles=new IdentityHashMap<>();
@@ -387,6 +388,7 @@ public class MainActivity extends Activity {
         item(c,"×","Заблокировать автозаполнение","Закрыть доступ к хранилищу","›",()->{if(passwords!=null)passwords.lock();toast("Хранилище заблокировано");});
         item(c,"⚙","Менеджер паролей Android","Выбор системной службы автозаполнения","›",()->{try{startActivity(new Intent("android.settings.AUTOFILL_SETTINGS"));}catch(Exception e){startActivity(new Intent(android.provider.Settings.ACTION_SETTINGS));}});
     }
+    boolean canPromptExtensionDownload(){return browserForeground&&!isFinishing()&&!isDestroyed();}
     BrowserPasswords browserPasswords(){return passwords;}
     private void privacy(){LinearLayout c=panel("Конфиденциальность","Gecko Edition",false);item(c,"◈","Пароли и аккаунты","Password Vault • сохранение и автозаполнение","›",this::passwordPanel);item(c,"◈","AdBlock Pro","Управление uBlock Origin","›",this::adBlockPanel);item(c,"◎","DNS Manager","Настройки DNS-over-HTTPS","›",this::dnsPanel);option(c,"◈","Блокировать известные трекеры","Gecko: списки трекеров и cookies","tracker",tracker,()->privacy());option(c,"◷","Сохранять историю","История и восстановление вкладок","historyEnabled",historyEnabled,()->{if(!historyEnabled)saveTabs();privacy();});item(c,"×","Очистить данные","Кэш, история и cookies","›",()->clearData());item(c,"◎","Tor","Экспериментальный клиент • отдельный экран","›",()->openTor(""));}
 
@@ -1244,8 +1246,8 @@ public class MainActivity extends Activity {
         runtime.getSettings().getContentBlocking().setCookieBehavior(tracker?ContentBlocking.CookieBehavior.ACCEPT_NON_TRACKERS:ContentBlocking.CookieBehavior.ACCEPT_ALL);
     }
     @Override protected void onPause(){if(!tabs.isEmpty())saveTabs();super.onPause();}
-    @Override protected void onStop(){if(passwords!=null)passwords.stopped();if(videoSuspend)for(Tab t:tabs)setSessionActive(t,false,false);super.onStop();}
-    @Override protected void onStart(){super.onStart();if(prefs!=null)applyVideoPower();if(!tabs.isEmpty()){Tab t=current(),logical=addonContext();for(Tab other:tabs)setSessionActive(other,other==t&&!t.home&&!t.crashed,other==logical&&logical.session!=null);}}
+    @Override protected void onStop(){browserForeground=false;if(passwords!=null)passwords.stopped();if(videoSuspend)for(Tab t:tabs)setSessionActive(t,false,false);super.onStop();}
+    @Override protected void onStart(){super.onStart();browserForeground=true;if(prefs!=null)applyVideoPower();if(!tabs.isEmpty()){Tab t=current(),logical=addonContext();for(Tab other:tabs)setSessionActive(other,other==t&&!t.home&&!t.crashed,other==logical&&logical.session!=null);}}
     private void compactItem(LinearLayout c,String symbol,String title,Runnable action){
         LinearLayout r=row();r.setGravity(Gravity.CENTER_VERTICAL);r.setPadding(dp(10),0,dp(10),0);r.setBackground(glassRipple(12,0xff39416a));
         TextView image=badge(symbol,CYAN);add(r,image,34,34);
