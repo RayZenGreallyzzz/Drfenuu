@@ -1,2 +1,21 @@
-(async()=>{try{const result=await browser.runtime.sendNativeMessage("aetherScripts",{action:"list"});if(!result||!result.scripts||!result.scripts.length||!document.body)return;
-const host=document.createElement("div");host.style.cssText="position:fixed;bottom:16px;left:16px;z-index:2147483647";const root=host.attachShadow({mode:"closed"});const button=document.createElement("button");button.textContent="⚡ Скрипты";button.style.cssText="background:#10162c;color:#53ddfb;border:1px solid #a78bfa;border-radius:12px;padding:12px";root.append(button);const menu=document.createElement("div");menu.hidden=true;menu.style.cssText="background:#10162c;color:#edf2ff;padding:8px;border-radius:12px;max-width:240px";root.append(menu);button.addEventListener("click",e=>{if(e.isTrusted)menu.hidden=!menu.hidden;});for(const script of result.scripts){const run=document.createElement("button");run.textContent=script.name;run.style.cssText="display:block;margin:6px;color:#edf2ff;background:#222b49;padding:8px";run.addEventListener("click",async e=>{if(!e.isTrusted)return;if(!window.confirm("Запустить "+script.name+" на этом сайте?"))return;run.disabled=true;try{const response=await browser.runtime.sendNativeMessage("aetherScripts",{action:"run",id:script.id});if(!response||!response.code||response.origin!==location.origin)throw Error("Скрипт выключен или сайт изменился");await browser.runtime.sendMessage({kind:"run-local",code:response.code,origin:response.origin});run.textContent="Запущено";}catch(err){run.disabled=false;window.alert(String(err));}});menu.append(run);}document.body.append(host);}catch(err){console.warn("AetherBolt script bridge",err);}})();
+// Passive connection. No overlay, page event handlers, or automatic script execution.
+(() => {
+  if (window !== window.top || !/^https?:$/.test(location.protocol)) return;
+  let port;
+  try { port = browser.runtime.connectNative("aetherScripts"); } catch (_) { return; }
+  let running = false;
+  port.onMessage.addListener(async request => {
+    if (!request || request.type !== "run" || running || typeof request.token !== "string") return;
+    const token = request.token;
+    running = true;
+    let result;
+    try {
+      if (request.origin !== location.origin || request.url !== location.href || typeof request.code !== "string" || request.code.length > 262144) throw Error("Страница изменилась");
+      result = await browser.runtime.sendMessage({kind:"run-local",code:request.code,origin:request.origin,url:request.url});
+      if (!result || result.ok !== true) throw Error(result && result.message || "Нет подтверждения выполнения");
+      port.postMessage({type:"result",token,ok:true});
+    } catch (err) {
+      try { port.postMessage({type:"result",token,ok:false,message:String(err).slice(0,180)}); } catch (_) {}
+    } finally { running = false; }
+  });
+})();
